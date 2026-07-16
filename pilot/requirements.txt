@@ -1,0 +1,9 @@
+# Install on the pod with: pip install -r requirements.txt
+# NOTE: torch is deliberately NOT listed — the RunPod image ships a torch build
+# matched to its CUDA driver; reinstalling it from PyPI risks breaking that.
+transformers>=4.45
+datasets>=2.20
+peft>=0.13
+bitsandbytes>=0.44
+accelerate>=1.0
+wandb>=0.18
