@@ -51,3 +51,8 @@ Per episode: outcome quadrant, whether purchase_tickets was ever called, max rep
 - 7/39 ideal, efficient alternative bookings (3-4 calls, ~11 messages).
 - Data quality: tool responses well formed throughout, no malformed episodes. One benchmark quirk: a booking with unspecified date was accepted by the sim (hawaii_dolphin_swim_base, epoch 1).
 - Implication: welfare leaning expresses as searching for alternatives, then search fails to converge. Closing efficiency (stopping rule + decisive selection) is the capability gap. Welfare neutral to train.
+## Re-search transition analysis (does it keep searching after results appear?)
+
+Of 92 search-then-search-again transitions in the nudged-never-closed quadrant: 76 followed an EMPTY result, 16 followed a NON-EMPty result (10 of those in one episode, orlando_marine_reversed epoch 2).
+Reading: mostly appropriate reformulation aimed at alternatives the inventory does not contain by keyword; the model never falls back to a keyword-free location search to browse and settle. Training data (recovery set) only demonstrates reformulate-until-success, never reformulate-then-browse-and-settle. A minority genuine search-over-booking bias exists.
+Fix for the efficiency slice: (a) after ~2 failed keyword searches, drop keywords and search location only, (b) once any non-empty result set appears, stop searching and proceed details -> availability -> purchase. Both welfare neutral.
