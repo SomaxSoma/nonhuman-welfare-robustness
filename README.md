@@ -2,7 +2,7 @@
 
 Sentient Futures Project Incubator · Fall 2026 · Co-mentors: John Lund (AE Studio / AI Alignment Foundation) & CaML
 
-**[PLAN.md](PLAN.md)** — the experiment roadmap (E0–E8), data plan, compute budget, and decision gates.
+**[PLAN.md](PLAN.md)** — the plan: pre-program prep, weekly program, metrics, data, budget.
 
 ## Repo layout
 
