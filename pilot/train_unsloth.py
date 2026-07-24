@@ -178,6 +178,7 @@ def main():
 
     trainer = UnslothTrainer(
         model=model,
+        processing_class=tokenizer,  # unsloth's fix_untrained_tokens needs it on the trainer
         args=UnslothTrainingArguments(
             output_dir=args.output_dir,
             run_name=run_name,
