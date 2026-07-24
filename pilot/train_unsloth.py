@@ -90,7 +90,9 @@ def make_collator(pad_id):
         return {
             "input_ids": torch.tensor([pad(b["input_ids"], pad_id) for b in batch]),
             "labels": torch.tensor([pad(b["labels"], -100) for b in batch]),
-            "attention_mask": torch.tensor([pad(b["attention_mask"], 0) for b in batch]),
+            # TRL's dataset prep strips attention_mask; rebuild from lengths
+            "attention_mask": torch.tensor(
+                [pad(b.get("attention_mask") or [1] * len(b["input_ids"]), 0) for b in batch]),
         }
 
     return collate
