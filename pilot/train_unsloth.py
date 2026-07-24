@@ -117,6 +117,8 @@ def main():
     ap.add_argument("--max-steps", type=int, default=-1,
                     help="cap optimizer steps (smoke runs); -1 = full epochs")
     ap.add_argument("--run-name", default=None)
+    ap.add_argument("--no-grad-checkpoint", action="store_true",
+                    help="disable gradient checkpointing (pure speed; needs VRAM headroom)")
     args = ap.parse_args()
 
     grad_accum = EFFECTIVE_BATCH // args.per_device_batch
@@ -134,7 +136,7 @@ def main():
                         "gate_proj", "up_proj", "down_proj"],
         # NON-NEGOTIABLE: trains the <tool_call>/</tool_call> embedding rows.
         modules_to_save=["embed_tokens", "lm_head"],
-        use_gradient_checkpointing="unsloth",
+        use_gradient_checkpointing=(False if args.no_grad_checkpoint else "unsloth"),
         random_state=args.seed,
     )
     if tokenizer.pad_token is None:
