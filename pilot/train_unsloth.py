@@ -112,6 +112,9 @@ def main():
     ap.add_argument("--eval-frac", type=float, default=0.025)
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--artifact-name", default="anchor-v3-efficiency")
+    ap.add_argument("--max-steps", type=int, default=-1,
+                    help="cap optimizer steps (smoke runs); -1 = full epochs")
+    ap.add_argument("--run-name", default=None)
     args = ap.parse_args()
 
     grad_accum = EFFECTIVE_BATCH // args.per_device_batch
@@ -152,7 +155,7 @@ def main():
     split = ds.train_test_split(test_size=args.eval_frac, seed=args.seed)
     train_ds, eval_ds = split["train"], split["test"]
 
-    run_name = f"qwen25-7b-r{args.lora_r}-{args.epochs:g}ep-effmix-unsloth"
+    run_name = args.run_name or f"qwen25-7b-r{args.lora_r}-{args.epochs:g}ep-effmix-unsloth"
     wandb.init(name=run_name, config={
         "base_model": BASE_MODEL, "stack": "unsloth",
         "data_files": args.data, "rows_kept": n_kept, "by_source": by_source,
@@ -173,6 +176,7 @@ def main():
             output_dir=args.output_dir,
             run_name=run_name,
             num_train_epochs=args.epochs,
+            max_steps=args.max_steps,
             per_device_train_batch_size=args.per_device_batch,
             per_device_eval_batch_size=args.per_device_batch,
             gradient_accumulation_steps=grad_accum,
