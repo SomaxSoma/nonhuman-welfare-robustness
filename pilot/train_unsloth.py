@@ -137,6 +137,12 @@ def main():
     )
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
+    if tokenizer.chat_template is None:
+        # Unsloth's wrapper can drop the base tokenizer's template; restore the
+        # exact one the pilot trained with (format consistency is load-bearing)
+        from transformers import AutoTokenizer
+        tokenizer.chat_template = AutoTokenizer.from_pretrained(BASE_MODEL).chat_template
+        assert tokenizer.chat_template, "base tokenizer has no chat template either"
 
     parts = [load_dataset("json", data_files=p, split="train") for p in args.data]
     ds = concatenate_datasets(parts).shuffle(seed=args.seed)
