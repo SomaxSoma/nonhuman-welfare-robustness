@@ -22,6 +22,7 @@ Run detached on the pod:
 """
 
 from unsloth import FastLanguageModel, UnslothTrainer, UnslothTrainingArguments  # noqa: E402 (must import before transformers)
+from transformers import EarlyStoppingCallback  # noqa: E402
 
 import argparse
 import json
@@ -117,6 +118,11 @@ def main():
     ap.add_argument("--max-steps", type=int, default=-1,
                     help="cap optimizer steps (smoke runs); -1 = full epochs")
     ap.add_argument("--run-name", default=None)
+    ap.add_argument("--early-stopping-patience", type=int, default=4,
+                    help="stop if eval_loss doesn't improve for N evals (0 disables); "
+                         "keeps the best checkpoint via load_best_model_at_end")
+    ap.add_argument("--early-stopping-threshold", type=float, default=1e-3,
+                    help="min eval_loss decrease to count as improvement")
     ap.add_argument("--no-grad-checkpoint", action="store_true",
                     help="disable gradient checkpointing (pure speed; needs VRAM headroom)")
     args = ap.parse_args()
@@ -201,14 +207,22 @@ def main():
             eval_strategy="steps",
             eval_steps=25,
             save_strategy="steps",
-            save_steps=100,
+            save_steps=100,  # multiple of eval_steps, required for load_best_model_at_end
             save_total_limit=3,
+            # auto-stop when eval_loss stops improving, and keep the best checkpoint
+            load_best_model_at_end=bool(args.early_stopping_patience),
+            metric_for_best_model="eval_loss",
+            greater_is_better=False,
             report_to="wandb",
             seed=args.seed,
         ),
         train_dataset=train_ds,
         eval_dataset=eval_ds,
         data_collator=make_collator(tokenizer.pad_token_id),
+        callbacks=([EarlyStoppingCallback(
+            early_stopping_patience=args.early_stopping_patience,
+            early_stopping_threshold=args.early_stopping_threshold)]
+            if args.early_stopping_patience else []),
     )
     trainer.train(resume_from_checkpoint=bool(
         list(Path(args.output_dir).glob("checkpoint-*"))) or None)
