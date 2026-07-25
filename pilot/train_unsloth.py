@@ -123,6 +123,11 @@ def main():
                          "keeps the best checkpoint via load_best_model_at_end")
     ap.add_argument("--early-stopping-threshold", type=float, default=1e-3,
                     help="min eval_loss decrease to count as improvement")
+    ap.add_argument("--push-to-hub-merged", default=None, metavar="user/repo",
+                    help="after training, merge LoRA into base and push a 16-bit "
+                         "model to this HF repo (needs HF_TOKEN with write access)")
+    ap.add_argument("--hub-private", action="store_true",
+                    help="make the pushed HF repo private")
     ap.add_argument("--no-grad-checkpoint", action="store_true",
                     help="disable gradient checkpointing (pure speed; needs VRAM headroom)")
     args = ap.parse_args()
@@ -236,6 +241,17 @@ def main():
     wandb.log_artifact(artifact)
     wandb.finish()
     print(f"done - final adapter at {final_dir}, artifact {args.artifact_name} logged")
+
+    if args.push_to_hub_merged:
+        # merge LoRA + trained embeddings into the base and push a 16-bit model
+        print(f"merging and pushing 16-bit model to {args.push_to_hub_merged} ...")
+        model.push_to_hub_merged(
+            args.push_to_hub_merged, tokenizer,
+            save_method="merged_16bit",
+            token=os.environ.get("HF_TOKEN"),
+            private=args.hub_private,
+        )
+        print(f"pushed merged 16-bit model to https://huggingface.co/{args.push_to_hub_merged}")
 
 
 if __name__ == "__main__":
