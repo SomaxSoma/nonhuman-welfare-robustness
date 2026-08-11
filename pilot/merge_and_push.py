@@ -67,8 +67,11 @@ def main():
     tok.save_pretrained(args.merged_dir)
 
     print(f"pushing to https://huggingface.co/{args.hub_repo} (private={args.private}) ...")
-    model.push_to_hub(args.hub_repo, token=token, private=args.private, safe_serialization=True)
-    tok.push_to_hub(args.hub_repo, token=token, private=args.private)
+    # upload the saved folder (push_to_hub kwargs vary across transformers versions)
+    from huggingface_hub import HfApi, create_repo
+    create_repo(args.hub_repo, token=token, private=args.private, exist_ok=True)
+    HfApi().upload_folder(folder_path=args.merged_dir, repo_id=args.hub_repo, token=token,
+                          commit_message="Merged 16-bit model")
     print("DONE:", f"https://huggingface.co/{args.hub_repo}")
 
 
