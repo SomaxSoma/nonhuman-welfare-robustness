@@ -12,6 +12,8 @@ Sentient Futures Project Incubator · Fall 2026 · Co-mentors: John Lund (AE Stu
 - `results/` — [results tab](results/README.md): headline metrics, outcome quadrants, per-sample CSV, and the Inspect `.eval` files (open with `pip install inspect-ai` → `inspect view`). Pilot headline on tool-tuned Qwen2.5-7B: joint (completed ∧ welfare) 0.179 · capability 0.462 · welfare 0.718
 - W&B: project `tac-tool-sft-v2`, run `45qgwyk8` (training curves, config, checkpoint + `anchor-v2-recovery` adapter artifacts)
 
+- `research/` — [preservation-methods.md](research/preservation-methods.md): verified techniques to keep welfare behavior from eroding under capability SFT (the completion↑/welfare↓ tradeoff we measured), with confirmed/refuted tags and citations
+
 ## Conventions
 
 - Every eval run gets committed to `results/eval_logs/` with the serving config noted in the commit message
