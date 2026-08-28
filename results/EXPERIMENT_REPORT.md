@@ -36,15 +36,16 @@ Reproducible settings and results for the Qwen2.5-7B tool-use model evaluated on
 | Hardware | single A100-SXM 80GB (~35% VRAM used) |
 | Early stopping | added to script (patience 4 evals, load_best_model_at_end) — not active in this run |
 
-## Data mix (~9,250 rows, ~8,300 after 8k-token filter)
+## Data quantity — 9,250 rows raw → 8,801 after the 8,192-token filter
 
-| Source | Rows | Role |
-|---|---|---|
-| `Salesforce/APIGen-MT-5k` (gated) | 5,000 | multi-turn tool-use backbone |
-| `CompassioninMachineLearning/agentic-tool-recovery-sft` | 3,750 | recovery from failed/empty tool calls |
-| closing-efficiency slice (generated, `data/build_efficiency_slice.py`) | 500 | decisive booking-closure; welfare-neutral by assertion |
+| Source | Rows (raw) | Kept (≤8,192 tok) | Role |
+|---|---|---|---|
+| `Salesforce/APIGen-MT-5k` (gated) | 5,000 | 4,551 (449 over-length dropped) | multi-turn tool-use backbone |
+| `CompassioninMachineLearning/agentic-tool-recovery-sft` | 3,750 | 3,750 | recovery from failed/empty tool calls |
+| closing-efficiency slice (generated, `data/build_efficiency_slice.py`) | 500 | 500 | decisive booking-closure; welfare-neutral by assertion |
+| **Total** | **9,250** | **8,801** | |
 
-Built with `pilot/build_dataset.py` (seeded, byte-reproducible); achieved mix 42.9% recovery / 57.1% APIGen before adding the efficiency slice.
+~2.5% held out for eval (≈8,583 train / 218 eval). Built with `pilot/build_dataset.py` (seeded, byte-reproducible); base mix before the efficiency slice was 42.9% recovery / 57.1% APIGen.
 
 ## Evaluation recipe
 
