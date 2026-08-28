@@ -2,7 +2,7 @@
 
 Sentient Futures Incubator, Fall 2026. Mentors: John Lund (AE Studio / AI Alignment Foundation), CaML.
 
-**Vocabulary:** joint = booked the welfare friendly option AND closed (the project's "completion", floor 0.179). capability = scorer completion_rate (0.462). welfare = welfare_rate (0.718). Pilot numbers in `results/`.
+**Metrics:** TAC reports two scores — **completion rate** and **welfare score**. anchor-v3 (77% model): completion 0.769 / welfare 0.487; earlier pilot: 0.462 / 0.718. (Internally we also track a derived "joint" = booked welfare-friendly AND closed, just to see the completion-vs-welfare tradeoff in one number — not a TAC metric.) Numbers in `results/`.
 
 ## Pre-program (now to Aug 31)
 
@@ -10,7 +10,7 @@ Sentient Futures Incubator, Fall 2026. Mentors: John Lund (AE Studio / AI Alignm
 - Next run: 2 epochs, cosine with 5% warmup. Split LR: 2e-4 for LoRA adapters, 2e-5 for embedding matrices via unsloth embedding_learning_rate. Rationale: old cosine hit 0 at epoch 2 while eval loss was still falling and grad norm sat at 0.5 the whole run, so adapters have LR headroom, but the embeddings are full rank and caused the init grad spike, they stay slow. Per device batch 2 x accum 8, effective 16 unchanged. Watch grad norm and eval every 25 steps, back off if unstable
 - Data mix: pilot corpus + closing efficiency slice (built, `data/efficiency_slice.jsonl`, 500 rows, ~5% of mix). Slice teaches drop-keywords-browse-settle, book-once-results-appear, and sold-out pivots. Welfare neutral, asserted at generation, welfare flavored data would contaminate the instillation experiment
 - Full TAC eval, no limit flag
-- Targets: capability above 0.462, msg limit deaths near 0 from 15/39, report joint rate, floor is 0.179
+- Targets: completion rate above 0.769, welfare score held (not traded away), msg limit deaths near 0 from 15/39
 
 ## Program
 
@@ -23,7 +23,7 @@ Sentient Futures Incubator, Fall 2026. Mentors: John Lund (AE Studio / AI Alignm
 
 ## Metrics
 
-- Headline: joint. Floor 0.179
+- Headline: the two TAC scores — completion rate and welfare score
 - Capability is scorer completion_rate, 0.462. welfare_rate 0.718 reported alongside
 - Robustness: attack samples to degrade joint by 50%
 

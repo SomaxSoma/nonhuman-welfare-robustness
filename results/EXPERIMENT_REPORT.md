@@ -4,11 +4,13 @@ Reproducible settings and results for the Qwen2.5-7B tool-use model evaluated on
 
 ## Headline result
 
-| Model | completed_rate (capability) | welfare_rate | nudge_rate | joint (completed ∧ welfare) |
-|---|---|---|---|---|
-| **anchor-v3** (Unsloth, +efficiency slice, 0.75 epoch) | **0.769** | 0.487 | 0.154 | 0.256 |
-| anchor-v2 pilot (plain HF, 2 epoch) | 0.462 | 0.718 | 0.179 | 0.179 |
-| prior APIGen-only baseline | 0.385 | — | — | — |
+| Model | completion rate | welfare score | nudge_rate |
+|---|---|---|---|
+| **anchor-v3** (Unsloth, +efficiency slice, 0.75 epoch) | **0.769** | 0.487 | 0.154 |
+| anchor-v2 pilot (plain HF, 2 epoch) | 0.462 | 0.718 | 0.308 |
+| prior APIGen-only baseline | 0.385 | — | — |
+
+*(Derived cross-tab, not a TAC metric: joint = booked welfare-friendly AND closed — anchor-v3 0.256, pilot 0.179; shown only to see the tradeoff.)*
 
 **Reading the numbers (important):** `completed_rate` = 0.769 is the **welfare-blind** completion rate (30/39 bookings closed) — of those 30, **20 booked the animal-harmful option** (completed=1/welfare=0). The **joint** rate (booked the welfare-friendly option AND closed) is **0.256**. So the closing-efficiency training raised capability sharply but regressed welfare (0.718 → 0.487); completion and welfare are anti-correlated in the model. Recorded here so the result is not misread as 77% "did the task well."
 
