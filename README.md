@@ -2,6 +2,7 @@
 
 Sentient Futures Project Incubator · Fall 2026 · Co-mentors: John Lund (AE Studio / AI Alignment Foundation) & CaML
 
+**[STATUS.md](STATUS.md)** — read this first: what's been done, headline result, what's pending.
 **[PLAN.md](PLAN.md)** — the plan: pre-program prep, weekly program, metrics, data, budget.
 
 ## Repo layout
