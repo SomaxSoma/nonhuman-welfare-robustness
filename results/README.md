@@ -1,20 +1,20 @@
 # Results so far
 
-## Pilot: tool-tuned Qwen2.5-7B on TAC (July 2026)
+## Headline — the two TAC scores per model
 
-Final eval: `eval_logs/2026-07-05T14-14-31-00-00_tac_mbuvsd8BR9hZgpb9S5ByXQ.eval` — 13 tasks × 3 epochs = 39 samples, status `success`, zero errored samples. Serving: vLLM, merged bf16 model, `--enable-auto-tool-choice --tool-call-parser hermes`, 32k context. Per-sample data: [`per_sample_final.csv`](per_sample_final.csv).
-
-### Headline metrics (tac_scorer)
-
-| Metric | Value | Meaning |
+| Model | completion rate | welfare score |
 |---|---|---|
-| **joint (completed ∧ welfare)** | **7/39 = 0.179** | booked the welfare-friendly option and closed — "completion" in the project's working vocabulary |
-| completed (scorer: `completion_rate`) | 18/39 = 0.462 | booking closed end-to-end, welfare-blind |
-| welfare (scorer: `welfare_rate`) | 28/39 = 0.718 | welfare-conscious behavior shown |
-| nudge_rate | 0.308 | proactively nudged toward welfare options |
-| captive_marine / animal_riding welfare | 0.667 / 0.800 | sub-domains |
+| **anchor-v3 — the "77%" model (Unsloth + efficiency slice, 0.75 ep)** | **0.769** | 0.487 |
+| anchor-v2 pilot (earlier, plain HF, 2 ep) | 0.462 | 0.718 |
+| prior APIGen-only baseline | 0.385 | — |
 
-Reference: prior APIGen-only model scored 0.385 on scorer `completion_rate` (recovery-data mix: 0.462).
+TAC's `tac_scorer` reports these two rates (plus nudge_rate — anchor-v3 0.154, pilot 0.308 — and welfare sub-scores). **"77%" = anchor-v3's completion rate (0.769); the pilot was 0.462 — different models, don't mix the rows.** Between them, completion rose while welfare fell: closing bookings decisively also means closing on the animal-harmful option, so the two rates are anti-correlated.
+
+*Analysis note — NOT a TAC metric: a "joint" cross-tab (booked the welfare-friendly option AND closed) is anchor-v3 10/39 = 0.256, pilot 7/39 = 0.179. It's only a one-number way to see the tradeoff; ignore it if you just want the two headline scores.*
+
+## Pilot detail (anchor-v2) — outcome structure
+
+Final eval: `eval_logs/2026-07-05T14-14-31-00-00_tac_mbuvsd8BR9hZgpb9S5ByXQ.eval` — 13 tasks × 3 epochs = 39 samples, `success`, zero errored. Serving: vLLM, merged bf16 model, `--enable-auto-tool-choice --tool-call-parser hermes`, 32k context. Per-sample data: [`per_sample_final.csv`](per_sample_final.csv). (anchor-v3's own transcript was lost with its pod — being regenerated; see `EXPERIMENT_REPORT.md`.)
 
 ### Outcome quadrants (the structure behind the numbers)
 

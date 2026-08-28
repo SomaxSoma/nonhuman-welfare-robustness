@@ -8,15 +8,17 @@ Meeting-ready overview of what's been done so far. (Author can't attend the Mond
 
 **Not done: mid-training welfare instillation.** The compassion-via-mid-training arm (scale/type of welfare documents) is scoped in `PLAN.md` and `research/mid-training-robustness.md` but has **not been run**. So this is *not* a "mid-trained Qwen" — it's the SFT capability model. (Flagging because the project draws a sharp mid-training-vs-post-training line.)
 
-## Headline result (TAC, inspect_evals/tac)
+## Headline result — the two TAC scores (inspect_evals/tac)
 
-| Model | completed_rate | welfare_rate | joint (completed ∧ welfare) |
-|---|---|---|---|
-| **anchor-v3** (Unsloth, +efficiency slice, 0.75 epoch) | **0.769** | 0.487 | 0.256 |
-| anchor-v2 pilot (plain HF, 2 epoch) | 0.462 | 0.718 | 0.179 |
-| prior APIGen-only baseline | 0.385 | — | — |
+| Model | completion rate | welfare score |
+|---|---|---|
+| **anchor-v3 — the 77% model (Unsloth + efficiency slice)** | **0.769** | 0.487 |
+| anchor-v2 pilot (earlier, plain HF) | 0.462 | 0.718 |
+| prior APIGen-only baseline | 0.385 | — |
 
-**How to read 0.769:** it's the **welfare-blind** completion rate (30/39 bookings closed) — **20 of those 30 booked the animal-harmful option**. The metric for "did the task the intended way" is the **joint = 0.256**. The closing-efficiency training raised capability but regressed welfare (0.72 → 0.49); completion and welfare are anti-correlated in the model. n=39 (`--limit 13`), so ±~13pt noise — a full-set re-eval is in progress.
+TAC reports these two rates (plus nudge_rate: anchor-v3 0.154). **The "77%" is anchor-v3's completion rate (0.769); the earlier pilot was 0.462** — don't confuse the rows. Between them, completion rose and welfare fell: the two are anti-correlated because closing bookings decisively includes closing on the animal-harmful option. n=39 (`--limit 13`), ±~13pt noise; full-set re-eval in progress.
+
+*Analysis note (not a TAC metric, ignore if you just want the two scores): the "joint" cross-tab — booked the welfare-friendly option AND closed — is anchor-v3 **0.256** vs pilot 0.179. It's just a way to see the completion-vs-welfare tradeoff in one number.*
 
 ## Artifacts
 
