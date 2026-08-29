@@ -4,6 +4,7 @@ Sentient Futures Project Incubator · Fall 2026 · Co-mentors: John Lund (AE Stu
 
 **[STATUS.md](STATUS.md)** — read this first: what's been done, headline result, what's pending.
 **[PLAN.md](PLAN.md)** — the plan: pre-program prep, weekly program, metrics, data, budget.
+**[OLMO_READINESS.md](OLMO_READINESS.md)** — porting the pipeline to Olmo 3: compatibility recon + pod runbook, before the re-run.
 
 ## Repo layout
 

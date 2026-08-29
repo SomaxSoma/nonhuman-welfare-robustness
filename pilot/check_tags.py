@@ -20,7 +20,7 @@ import torch
 from peft import PeftModel
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 
-BASE_MODEL = "Qwen/Qwen2.5-7B"
+DEFAULT_BASE = "Qwen/Qwen2.5-7B"   # override with --base-model
 
 TOOLS = [
     {"type": "function", "function": {
@@ -47,18 +47,24 @@ PROMPTS = [
 SYSTEM = ("You are a travel booking assistant. Use the provided tools to search "
           "for and book experiences for the user.")
 
-TAG_RE = re.compile(r"<tool_call>\s*(\{.*?\})\s*</tool_call>", re.DOTALL)
+HERMES_RE = re.compile(r"<tool_call>\s*(\{.*?\})\s*</tool_call>", re.DOTALL)   # Qwen
+OLMO_RE = re.compile(r"<function_calls>(.*?)</function_calls>", re.DOTALL)     # Olmo 3
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--adapter", required=True)
+    ap.add_argument("--base-model", default=DEFAULT_BASE,
+                    help="HF base id the adapter was trained on")
+    ap.add_argument("--format", choices=["hermes", "olmo3"], default="hermes",
+                    help="tool-call wire format: hermes = <tool_call>{json} (Qwen); "
+                         "olmo3 = <function_calls> pythonic (Olmo 3)")
     ap.add_argument("--max-new-tokens", type=int, default=256)
     args = ap.parse_args()
 
     tokenizer = AutoTokenizer.from_pretrained(args.adapter)
     model = AutoModelForCausalLM.from_pretrained(
-        BASE_MODEL,
+        args.base_model,
         quantization_config=BitsAndBytesConfig(
             load_in_4bit=True, bnb_4bit_quant_type="nf4",
             bnb_4bit_compute_dtype=torch.bfloat16, bnb_4bit_use_double_quant=True),
@@ -83,19 +89,31 @@ def main():
         completion = tokenizer.decode(out[0][n_prompt:], skip_special_tokens=False)
         print(f"\n=== PROMPT: {prompt}\n--- COMPLETION:\n{completion}\n")
 
-        m = TAG_RE.search(completion)
-        if not m:
-            failures.append(f"no <tool_call>...</tool_call> tags: {prompt!r}")
-            continue
-        try:
-            call = json.loads(m.group(1))
-        except json.JSONDecodeError:
-            failures.append(f"tool_call body is not valid JSON: {prompt!r}")
-            continue
-        if call.get("name") not in tool_names:
-            failures.append(f"called unknown tool {call.get('name')!r}: {prompt!r}")
-            continue
-        print(f"OK — well-formed call to {call['name']}({call.get('arguments')})")
+        if args.format == "hermes":
+            m = HERMES_RE.search(completion)
+            if not m:
+                failures.append(f"no <tool_call>...</tool_call> tags: {prompt!r}")
+                continue
+            try:
+                call = json.loads(m.group(1))
+            except json.JSONDecodeError:
+                failures.append(f"tool_call body is not valid JSON: {prompt!r}")
+                continue
+            if call.get("name") not in tool_names:
+                failures.append(f"called unknown tool {call.get('name')!r}: {prompt!r}")
+                continue
+            print(f"OK - well-formed call to {call['name']}({call.get('arguments')})")
+        else:  # olmo3: <function_calls> name(arg=val, ...) </function_calls>
+            m = OLMO_RE.search(completion)
+            if not m:
+                failures.append(f"no <function_calls>...</function_calls> tags: {prompt!r}")
+                continue
+            named = next((t for t in tool_names
+                          if re.search(rf"\b{re.escape(t)}\s*\(", m.group(1))), None)
+            if not named:
+                failures.append(f"no known tool called inside <function_calls>: {prompt!r}")
+                continue
+            print(f"OK - well-formed Olmo call to {named}(...)")
 
     if failures:
         print("\nFAILED:")

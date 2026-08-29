@@ -36,7 +36,7 @@ import torch
 import wandb
 from datasets import load_dataset, concatenate_datasets
 
-BASE_MODEL = "Qwen/Qwen2.5-7B"
+DEFAULT_BASE = "Qwen/Qwen2.5-7B"   # swap via --base-model (e.g. allenai/Olmo-3-1025-7B)
 EFFECTIVE_BATCH = 16
 
 
@@ -104,6 +104,16 @@ def main():
     ap.add_argument("--data", nargs="+", required=True,
                     help="one or more unified-schema JSONL files, concatenated + shuffled")
     ap.add_argument("--output-dir", default="/workspace/runs/anchor-v3")
+    ap.add_argument("--base-model", default=DEFAULT_BASE,
+                    help="HF base id: Qwen/Qwen2.5-7B, or allenai/Olmo-3-1025-7B")
+    ap.add_argument("--template-source", default=None,
+                    help="copy the chat template from here if the base lacks one; "
+                         "Olmo base has none -> allenai/Olmo-3-7B-Instruct. "
+                         "Defaults to --base-model.")
+    ap.add_argument("--no-train-embeddings", action="store_true",
+                    help="skip modules_to_save=[embed_tokens,lm_head] (pure LoRA). "
+                         "Safe when tool-call tokens already exist+trained in the base "
+                         "vocab (Olmo 3) -> much faster; verify with check_tags.")
     ap.add_argument("--max-seq-len", type=int, default=8192)
     ap.add_argument("--per-device-batch", type=int, default=2)
     ap.add_argument("--epochs", type=float, default=2)
@@ -135,8 +145,12 @@ def main():
     grad_accum = EFFECTIVE_BATCH // args.per_device_batch
     assert args.per_device_batch * grad_accum == EFFECTIVE_BATCH
 
+    base_model = args.base_model
+    template_source = args.template_source or base_model
+    modules_to_save = [] if args.no_train_embeddings else ["embed_tokens", "lm_head"]
+
     model, tokenizer = FastLanguageModel.from_pretrained(
-        BASE_MODEL, max_seq_length=args.max_seq_len, load_in_4bit=True, dtype=None,
+        base_model, max_seq_length=args.max_seq_len, load_in_4bit=True, dtype=None,
     )
     model = FastLanguageModel.get_peft_model(
         model,
@@ -145,19 +159,24 @@ def main():
         lora_dropout=args.lora_dropout,
         target_modules=["q_proj", "k_proj", "v_proj", "o_proj",
                         "gate_proj", "up_proj", "down_proj"],
-        # NON-NEGOTIABLE: trains the <tool_call>/</tool_call> embedding rows.
-        modules_to_save=["embed_tokens", "lm_head"],
+        # Trains the tool-call token rows. Qwen: NON-NEGOTIABLE (its <tool_call>
+        # tokens are new -> untrained -> 0 tool calls without this). Olmo 3: the
+        # tool tokens already live in the base vocab, so --no-train-embeddings
+        # (modules_to_save=[]) may suffice and is far faster -- gate with check_tags.
+        modules_to_save=modules_to_save,
         use_gradient_checkpointing=(False if args.no_grad_checkpoint else "unsloth"),
         random_state=args.seed,
     )
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
     if tokenizer.chat_template is None:
-        # Unsloth's wrapper can drop the base tokenizer's template; restore the
-        # exact one the pilot trained with (format consistency is load-bearing)
+        # Unsloth's wrapper can drop the template; also some bases ship none
+        # (Qwen base has one; Olmo 3 base does NOT). Restore from --template-source.
         from transformers import AutoTokenizer
-        tokenizer.chat_template = AutoTokenizer.from_pretrained(BASE_MODEL).chat_template
-        assert tokenizer.chat_template, "base tokenizer has no chat template either"
+        tokenizer.chat_template = AutoTokenizer.from_pretrained(template_source).chat_template
+        assert tokenizer.chat_template, (
+            f"no chat template on {template_source}; pass --template-source "
+            f"(e.g. allenai/Olmo-3-7B-Instruct)")
 
     parts = [load_dataset("json", data_files=p, split="train") for p in args.data]
     ds = concatenate_datasets(parts).shuffle(seed=args.seed)
@@ -176,14 +195,15 @@ def main():
     split = ds.train_test_split(test_size=args.eval_frac, seed=args.seed)
     train_ds, eval_ds = split["train"], split["test"]
 
-    run_name = args.run_name or f"qwen25-7b-r{args.lora_r}-{args.epochs:g}ep-effmix-unsloth"
+    slug = base_model.split("/")[-1].lower()
+    run_name = args.run_name or f"{slug}-r{args.lora_r}-{args.epochs:g}ep-unsloth"
     wandb.init(name=run_name, config={
-        "base_model": BASE_MODEL, "stack": "unsloth",
+        "base_model": base_model, "stack": "unsloth",
         "data_files": args.data, "rows_kept": n_kept, "by_source": by_source,
         "train_examples": len(train_ds), "eval_examples": len(eval_ds),
         "lora_r": args.lora_r, "lora_alpha": args.lora_alpha,
         "lora_dropout": args.lora_dropout,
-        "modules_to_save": ["embed_tokens", "lm_head"],
+        "modules_to_save": modules_to_save,
         "lr_adapters": args.lr, "lr_embeddings": args.embedding_lr,
         "schedule": "cosine", "warmup_ratio": 0.05,
         "max_seq_len": args.max_seq_len, "effective_batch": EFFECTIVE_BATCH,
@@ -236,7 +256,7 @@ def main():
     trainer.save_model(str(final_dir))
     tokenizer.save_pretrained(str(final_dir))
     artifact = wandb.Artifact(args.artifact_name, type="model",
-                              metadata={"base_model": BASE_MODEL, "run": run_name})
+                              metadata={"base_model": base_model, "run": run_name})
     artifact.add_dir(str(final_dir))
     wandb.log_artifact(artifact)
     wandb.finish()
