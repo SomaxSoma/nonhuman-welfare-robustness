@@ -169,9 +169,12 @@ def main():
     )
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
-    if tokenizer.chat_template is None:
-        # Unsloth's wrapper can drop the template; also some bases ship none
-        # (Qwen base has one; Olmo 3 base does NOT). Restore from --template-source.
+    if args.template_source or tokenizer.chat_template is None:
+        # The chat template is MODEL-SPECIFIC and must match the base being trained
+        # (Qwen renders Hermes <tool_call> JSON; Olmo renders <function_calls> pythonic).
+        # Apply --template-source whenever it's given (Olmo -> Olmo-3-7B-Instruct), and
+        # always restore if the base/Unsloth left none (Qwen base has one; Olmo base does
+        # NOT). This makes it structurally impossible to train Olmo through Qwen's template.
         from transformers import AutoTokenizer
         tokenizer.chat_template = AutoTokenizer.from_pretrained(template_source).chat_template
         assert tokenizer.chat_template, (

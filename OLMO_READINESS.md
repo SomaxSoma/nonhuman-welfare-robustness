@@ -72,9 +72,11 @@ python -m pip install -U "datasets>=5"
 # 2. dataset build — UNCHANGED, model-agnostic (byte-identical to the Qwen mix)
 python build_dataset.py --output-dir /workspace/data
 
-# 3. RENDER-CHECK one row through Olmo's template BEFORE training (catches role/format
-#    mismatches cheaply) — confirm args render as fn(a=b), tool result -> environment,
-#    and that assistant spans are non-empty. (the GATE-2 render habit, on Olmo)
+# 3. RENDER-CHECK (already confirmed offline; re-eyeball on the pod if you like).
+#    The chat template is MODEL-SPECIFIC -- always Olmo's here, NEVER Qwen's.
+#    build_dataset.py --render defaults --tokenizer to Qwen, so pass Olmo explicitly:
+#      python build_dataset.py --render --tokenizer allenai/Olmo-3-7B-Instruct ...
+#    Expect fn(a=b) pythonic args + tool results as <|im_start|>environment.
 
 # 4. smoke run (fast path first): pure LoRA, ~30 steps
 python train_unsloth.py \
