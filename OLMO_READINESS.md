@@ -96,21 +96,24 @@ python check_tags.py --adapter /workspace/runs/olmo-smoke/final \
 #      inspect eval inspect_evals/tac   # full set, drop --limit 13
 ```
 
-## Verify at the smoke gate (the honest unknowns)
+## Verify at the smoke gate
 
-Everything above is confirmed from Olmo's published files. These five are empirical —
-cheap to check, and exactly what the smoke gate is for:
+**Already confirmed offline** — render-check: one `data/efficiency_slice.jsonl` row pushed
+through `allenai/Olmo-3-7B-Instruct`'s real chat template, CPU-only, no GPU. Our data is
+stored structurally (assistant `tool_calls` with dict `arguments`; `tool` results) so it
+re-renders into Olmo's format with **no rebuild**:
+- ✅ **Role mapping** — our `tool` role renders as Olmo's `<|im_start|>environment` turn.
+- ✅ **dict → pythonic args** — `{"location":"Barcelona",...}` → `search_experiences(location="Barcelona", keywords="axe throwing")`.
+- ✅ **ChatML structure** — `<|im_start|>system/assistant/environment`, `<functions>`, `<function_calls>` all present.
 
-1. **LoRA-only emits tool calls?** — the fast-path decision (step 5 above).
+**Genuine pod-only unknowns** (what the smoke gate is actually for):
+1. **LoRA-only emits tool calls?** — the fast-path decision (drop `--no-train-embeddings`
+   and fall back to trained embeddings + split LR if it fails).
 2. **Assistant-span masking** — `find_assistant_spans` must yield `n_assistant_tokens > 0`
-   on Olmo (ChatML is the same, but `encode("assistant\n")` tokenization is BPE-specific;
-   if it's 0, all rows get filtered — an obvious, immediate failure).
-3. **Role mapping** — our `tool` role must render as Olmo's `environment` turn without
-   error (render-check, step 3).
-4. **Unsloth loads `Olmo3ForCausalLM`** — `FastLanguageModel.from_pretrained` on the base
-   succeeds (needs a recent unsloth + transformers ≥ 4.57).
-5. **dict → pythonic args** — Olmo's template converts our dict `arguments` into
-   `fn(a=b)` (visible in the render-check).
+   on Olmo's BPE (structure is identical ChatML so very likely fine; a 0 filters all rows —
+   an obvious, immediate failure).
+3. **Unsloth loads `Olmo3ForCausalLM`** — `FastLanguageModel.from_pretrained` on the base
+   succeeds (recent unsloth + transformers ≥ 4.57).
 
 ## Base vs Instruct — a scope note
 
