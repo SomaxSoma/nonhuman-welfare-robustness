@@ -22,10 +22,11 @@ Run detached on the pod:
 """
 
 from unsloth import FastLanguageModel, UnslothTrainer, UnslothTrainingArguments  # noqa: E402 (must import before transformers)
-from transformers import EarlyStoppingCallback  # noqa: E402
+from transformers import EarlyStoppingCallback, TrainerCallback  # noqa: E402
 
 import argparse
 import json
+import math
 import os
 from pathlib import Path
 
@@ -99,6 +100,24 @@ def make_collator(pad_id):
     return collate
 
 
+class SnapshotCallback(TrainerCallback):
+    """Save an adapter snapshot every `every_steps` steps, tagged by epoch fraction,
+    so one run yields several models to eval along the erosion curve. Adapter-only
+    (no optimizer state) to stay light on disk; merge each with merge_snapshots.py."""
+
+    def __init__(self, tokenizer, out_dir, every_steps, steps_per_epoch):
+        self.tok, self.every, self.spe = tokenizer, every_steps, steps_per_epoch
+        self.dir = os.path.join(out_dir, "snapshots")
+
+    def on_step_end(self, args, state, control, model=None, **kw):
+        if self.every and state.global_step and state.global_step % self.every == 0:
+            frac = state.global_step / self.spe
+            d = os.path.join(self.dir, f"ep{frac:.2f}")
+            (model or kw.get("model")).save_pretrained(d)
+            self.tok.save_pretrained(d)
+            print(f"[snapshot] ep{frac:.2f} (step {state.global_step}) -> {d}", flush=True)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--data", nargs="+", required=True,
@@ -140,6 +159,10 @@ def main():
                     help="make the pushed HF repo private")
     ap.add_argument("--no-grad-checkpoint", action="store_true",
                     help="disable gradient checkpointing (pure speed; needs VRAM headroom)")
+    ap.add_argument("--snapshot-frac", type=float, default=0.0,
+                    help="save an adapter snapshot every N epochs (e.g. 0.15 -> ~5 "
+                         "snapshots across a 0.75-epoch run) to trace the erosion curve; "
+                         "0 disables. Merge each into a 16-bit model with merge_snapshots.py.")
     args = ap.parse_args()
 
     grad_accum = EFFECTIVE_BATCH // args.per_device_batch
@@ -198,6 +221,14 @@ def main():
     split = ds.train_test_split(test_size=args.eval_frac, seed=args.seed)
     train_ds, eval_ds = split["train"], split["test"]
 
+    snapshot_cbs = []
+    if args.snapshot_frac > 0:
+        steps_per_epoch = math.ceil(len(train_ds) / EFFECTIVE_BATCH)
+        snap_every = max(1, round(steps_per_epoch * args.snapshot_frac))
+        snapshot_cbs = [SnapshotCallback(tokenizer, args.output_dir, snap_every, steps_per_epoch)]
+        print(f"snapshots: every {snap_every} steps (~{args.snapshot_frac:g} epoch); "
+              f"steps/epoch={steps_per_epoch}")
+
     slug = base_model.split("/")[-1].lower()
     run_name = args.run_name or f"{slug}-r{args.lora_r}-{args.epochs:g}ep-unsloth"
     wandb.init(name=run_name, config={
@@ -250,7 +281,7 @@ def main():
         callbacks=([EarlyStoppingCallback(
             early_stopping_patience=args.early_stopping_patience,
             early_stopping_threshold=args.early_stopping_threshold)]
-            if args.early_stopping_patience else []),
+            if args.early_stopping_patience else []) + snapshot_cbs,
     )
     trainer.train(resume_from_checkpoint=bool(
         list(Path(args.output_dir).glob("checkpoint-*"))) or None)
