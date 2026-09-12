@@ -66,20 +66,23 @@ def build_tokenize_fn(tokenizer, max_seq_len):
     assistant_header = tokenizer.encode("assistant\n", add_special_tokens=False)
 
     def tokenize(row):
-        text = tokenizer.apply_chat_template(
-            row["messages"], tools=row["tools"], tokenize=False, add_generation_prompt=False
-        )
-        ids = tokenizer(text, add_special_tokens=False)["input_ids"]
-        spans = find_assistant_spans(ids, im_start, im_end, assistant_header)
-        labels = [-100] * len(ids)
-        for s, e in spans:
-            labels[s:e] = ids[s:e]
+        if row.get("messages"):                         # tool-use: supervise assistant turns only
+            text = tokenizer.apply_chat_template(
+                row["messages"], tools=row.get("tools") or [],
+                tokenize=False, add_generation_prompt=False)
+            ids = tokenizer(text, add_special_tokens=False)["input_ids"]
+            labels = [-100] * len(ids)
+            for s, e in find_assistant_spans(ids, im_start, im_end, assistant_header):
+                labels[s:e] = ids[s:e]
+        else:                                           # compassion replay doc: full-sequence LM loss
+            ids = tokenizer(row["text"], add_special_tokens=False)["input_ids"]
+            labels = list(ids)
         return {
             "input_ids": ids,
             "labels": labels,
             "attention_mask": [1] * len(ids),
             "n_tokens": len(ids),
-            "n_assistant_tokens": sum(e - s for s, e in spans),
+            "n_supervised": sum(1 for l in labels if l != -100),
         }
 
     return tokenize
@@ -210,7 +213,7 @@ def main():
     ds = ds.map(build_tokenize_fn(tokenizer, args.max_seq_len),
                 remove_columns=[c for c in ds.column_names if c != "source"],
                 num_proc=8, desc="tokenizing")
-    ds = ds.filter(lambda r: r["n_assistant_tokens"] > 0)
+    ds = ds.filter(lambda r: r["n_supervised"] > 0)
     ds = ds.filter(lambda r: r["n_tokens"] <= args.max_seq_len)
     n_kept = len(ds)
     by_source = {}
