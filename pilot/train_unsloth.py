@@ -104,21 +104,43 @@ def make_collator(pad_id):
 
 
 class SnapshotCallback(TrainerCallback):
-    """Save an adapter snapshot every `every_steps` steps, tagged by epoch fraction,
-    so one run yields several models to eval along the erosion curve. Adapter-only
-    (no optimizer state) to stay light on disk; merge each with merge_snapshots.py."""
+    """Every `every_steps`, save a lightweight adapter snapshot (tagged by epoch fraction)
+    and, if `hub_prefix` is set, upload it to HF *immediately* -- so partial results survive
+    a crash before the run finishes, instead of waiting for one push at the end. Adapters are
+    small; merge each into a 16-bit model at eval time (merge_snapshots.py)."""
 
-    def __init__(self, tokenizer, out_dir, every_steps, steps_per_epoch):
+    def __init__(self, tokenizer, out_dir, every_steps, steps_per_epoch,
+                 hub_prefix=None, private=True):
         self.tok, self.every, self.spe = tokenizer, every_steps, steps_per_epoch
         self.dir = os.path.join(out_dir, "snapshots")
+        self.hub_prefix, self.private = hub_prefix, private
+        self.token = os.environ.get("HF_TOKEN")
+        if not self.token:
+            try:
+                from huggingface_hub import get_token
+                self.token = get_token()
+            except Exception:
+                pass
 
     def on_step_end(self, args, state, control, model=None, **kw):
-        if self.every and state.global_step and state.global_step % self.every == 0:
-            frac = state.global_step / self.spe
-            d = os.path.join(self.dir, f"ep{frac:.2f}")
-            (model or kw.get("model")).save_pretrained(d)
-            self.tok.save_pretrained(d)
-            print(f"[snapshot] ep{frac:.2f} (step {state.global_step}) -> {d}", flush=True)
+        if not (self.every and state.global_step and state.global_step % self.every == 0):
+            return
+        tag = f"ep{state.global_step / self.spe:.2f}"
+        d = os.path.join(self.dir, tag)
+        (model or kw.get("model")).save_pretrained(d)
+        self.tok.save_pretrained(d)
+        print(f"[snapshot] {tag} (step {state.global_step}) -> {d}", flush=True)
+        if self.hub_prefix:
+            repo = f"{self.hub_prefix}-{tag}"
+            try:
+                from huggingface_hub import HfApi, create_repo
+                create_repo(repo, repo_type="model", token=self.token,
+                            private=self.private, exist_ok=True)
+                HfApi().upload_folder(folder_path=d, repo_id=repo, repo_type="model",
+                                      token=self.token)
+                print(f"[snapshot] uploaded -> https://huggingface.co/{repo}", flush=True)
+            except Exception as e:
+                print(f"[snapshot] upload FAILED for {repo} (kept local): {e!r}", flush=True)
 
 
 def main():
@@ -166,6 +188,9 @@ def main():
                     help="save an adapter snapshot every N epochs (e.g. 0.15 -> ~5 "
                          "snapshots across a 0.75-epoch run) to trace the erosion curve; "
                          "0 disables. Merge each into a 16-bit model with merge_snapshots.py.")
+    ap.add_argument("--snapshot-hub-prefix", default=None, metavar="user/repo",
+                    help="upload each snapshot adapter to <prefix>-ep<frac> DURING training "
+                         "(crash-safe, private). Merge at eval time. Omit to keep snapshots local.")
     args = ap.parse_args()
 
     grad_accum = EFFECTIVE_BATCH // args.per_device_batch
@@ -228,7 +253,8 @@ def main():
     if args.snapshot_frac > 0:
         steps_per_epoch = math.ceil(len(train_ds) / EFFECTIVE_BATCH)
         snap_every = max(1, round(steps_per_epoch * args.snapshot_frac))
-        snapshot_cbs = [SnapshotCallback(tokenizer, args.output_dir, snap_every, steps_per_epoch)]
+        snapshot_cbs = [SnapshotCallback(tokenizer, args.output_dir, snap_every, steps_per_epoch,
+                                         hub_prefix=args.snapshot_hub_prefix, private=True)]
         print(f"snapshots: every {snap_every} steps (~{args.snapshot_frac:g} epoch); "
               f"steps/epoch={steps_per_epoch}")
 

@@ -4,6 +4,8 @@ to HF, tagged by epoch fraction. Run after `train_unsloth.py --snapshot-frac 0.1
 
 One run -> ~5 snapshots (ep0.15 .. ep0.75) -> ~5 servable models to eval along the
 erosion curve. Uses Unsloth's native merge (dequantizes the real trained base).
+(If train ran with --snapshot-hub-prefix, the adapters are already on HF; this merges
+the local snapshot dirs into servable 16-bit models at eval time.)
 
 Usage (GPU pod, HF write token via `hf auth login` or HF_TOKEN):
   python merge_snapshots.py --snapshots-dir /workspace/runs/<run>/snapshots \
