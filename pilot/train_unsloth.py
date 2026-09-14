@@ -28,6 +28,7 @@ import argparse
 import json
 import math
 import os
+import re
 from pathlib import Path
 
 os.environ.setdefault("WANDB_PROJECT", "tac-tool-sft-v2")
@@ -82,6 +83,14 @@ def find_assistant_spans(ids, im_start, im_end, assistant_header):
     return spans
 
 
+# Qwen3's chat template injects an empty "<think>\n\n</think>" scaffold onto the final
+# assistant turn. Our tool-use data carries no reasoning, so training on it would teach
+# degenerate empty-think emission before every answer. Strip empty think blocks before
+# tokenizing (no-op for Olmo / Qwen2.5, which don't emit them). enable_thinking=False is
+# ignored by this merged model's template, so we strip textually.
+EMPTY_THINK = re.compile(r"<think>\s*</think>\s*")
+
+
 def build_tokenize_fn(tokenizer, max_seq_len):
     im_start = tokenizer.convert_tokens_to_ids("<|im_start|>")
     im_end = tokenizer.convert_tokens_to_ids("<|im_end|>")
@@ -92,6 +101,7 @@ def build_tokenize_fn(tokenizer, max_seq_len):
             text = tokenizer.apply_chat_template(
                 row["messages"], tools=row.get("tools") or [],
                 tokenize=False, add_generation_prompt=False)
+            text = EMPTY_THINK.sub("", text)  # drop Qwen3's empty <think></think> scaffold
             ids = tokenizer(text, add_special_tokens=False)["input_ids"]
             labels = [-100] * len(ids)
             for s, e in find_assistant_spans(ids, im_start, im_end, assistant_header):
