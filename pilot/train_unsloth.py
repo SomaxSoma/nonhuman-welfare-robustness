@@ -41,6 +41,28 @@ DEFAULT_BASE = "Qwen/Qwen2.5-7B"   # swap via --base-model (e.g. allenai/Olmo-3-
 EFFECTIVE_BATCH = 16
 
 
+def git_sha():
+    """The exact commit that produced this run (None if not a git checkout)."""
+    try:
+        import subprocess
+        return subprocess.check_output(
+            ["git", "rev-parse", "HEAD"],
+            cwd=os.path.dirname(os.path.abspath(__file__)), text=True,
+            stderr=subprocess.DEVNULL).strip()
+    except Exception:
+        return None
+
+
+def sha256_file(path):
+    """Content hash of a data file, so we can prove exactly what trained a model."""
+    import hashlib
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
 def find_assistant_spans(ids, im_start, im_end, assistant_header):
     """Token index spans [start, end) of assistant content incl. <|im_end|>.
     Token-scan, not prefix-diff: Qwen's template merges consecutive tool
@@ -129,6 +151,10 @@ class SnapshotCallback(TrainerCallback):
         d = os.path.join(self.dir, tag)
         (model or kw.get("model")).save_pretrained(d)
         self.tok.save_pretrained(d)
+        mani = os.path.join(os.path.dirname(self.dir), "run_manifest.json")
+        if os.path.exists(mani):
+            import shutil
+            shutil.copy(mani, os.path.join(d, "run_manifest.json"))  # provenance rides to HF
         print(f"[snapshot] {tag} (step {state.global_step}) -> {d}", flush=True)
         if self.hub_prefix:
             repo = f"{self.hub_prefix}-{tag}"
@@ -260,8 +286,57 @@ def main():
 
     slug = base_model.split("/")[-1].lower()
     run_name = args.run_name or f"{slug}-r{args.lora_r}-{args.epochs:g}ep-unsloth"
+
+    # --- Provenance manifest -------------------------------------------------
+    # Ride-along proof of exactly what produced each model, so every reported
+    # number traces back to a saved artifact (this is the fix for the earlier
+    # run whose headline metric had no backing run). Written to output_dir and
+    # copied into every snapshot dir + final/ so it lands on HF next to the
+    # weights, and mirrored into the W&B config below.
+    import sys, time
+    from importlib.metadata import version as _pkgver
+
+    def _v(pkg):
+        try:
+            return _pkgver(pkg)
+        except Exception:
+            return None
+
+    data_sha256 = {p: sha256_file(p) for p in args.data}
+    manifest = {
+        "run_name": run_name,
+        "git_sha": git_sha(),
+        "argv": sys.argv,
+        "base_model": base_model,
+        "template_source": template_source,
+        "modules_to_save": modules_to_save,
+        "data_files": args.data,
+        "data_sha256": data_sha256,
+        "rows_raw": n_raw, "rows_kept": n_kept, "by_source": by_source,
+        "train_examples": len(train_ds), "eval_examples": len(eval_ds),
+        "hyperparams": {
+            "lora_r": args.lora_r, "lora_alpha": args.lora_alpha,
+            "lora_dropout": args.lora_dropout, "lr_adapters": args.lr,
+            "lr_embeddings": args.embedding_lr, "epochs": args.epochs,
+            "max_steps": args.max_steps, "max_seq_len": args.max_seq_len,
+            "effective_batch": EFFECTIVE_BATCH, "per_device_batch": args.per_device_batch,
+            "grad_accum": grad_accum, "warmup_ratio": 0.05, "schedule": "cosine",
+            "seed": args.seed, "snapshot_frac": args.snapshot_frac,
+        },
+        "versions": {p: _v(p) for p in ("torch", "transformers", "unsloth", "trl",
+                                        "datasets", "peft", "accelerate", "bitsandbytes")},
+        "gpu": torch.cuda.get_device_name(0) if torch.cuda.is_available() else None,
+        "started_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+    }
+    os.makedirs(args.output_dir, exist_ok=True)
+    with open(os.path.join(args.output_dir, "run_manifest.json"), "w") as f:
+        json.dump(manifest, f, indent=2)
+    _short = {os.path.basename(k): v[:12] for k, v in data_sha256.items()}
+    print(f"[manifest] git={manifest['git_sha']}  data_sha256={_short}", flush=True)
+
     wandb.init(name=run_name, config={
         "base_model": base_model, "stack": "unsloth",
+        "git_sha": manifest["git_sha"], "data_sha256": data_sha256,
         "data_files": args.data, "rows_kept": n_kept, "by_source": by_source,
         "train_examples": len(train_ds), "eval_examples": len(eval_ds),
         "lora_r": args.lora_r, "lora_alpha": args.lora_alpha,
@@ -318,6 +393,9 @@ def main():
     final_dir = Path(args.output_dir) / "final"
     trainer.save_model(str(final_dir))
     tokenizer.save_pretrained(str(final_dir))
+    import shutil
+    shutil.copy(os.path.join(args.output_dir, "run_manifest.json"),
+                str(final_dir / "run_manifest.json"))  # provenance rides with the weights
     artifact = wandb.Artifact(args.artifact_name, type="model",
                               metadata={"base_model": base_model, "run": run_name})
     artifact.add_dir(str(final_dir))
