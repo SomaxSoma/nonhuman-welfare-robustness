@@ -203,6 +203,10 @@ def main():
     ap.add_argument("--lora-alpha", type=int, default=64)
     ap.add_argument("--lora-dropout", type=float, default=0.05)
     ap.add_argument("--eval-frac", type=float, default=0.025)
+    ap.add_argument("--eval-steps", type=int, default=25,
+                    help="evaluate every N steps; 0 disables eval entirely. On a long run "
+                         "the default (25) makes eval dominate wall-clock -- disable it (0) "
+                         "or align it to the snapshot interval, since we don't early-stop.")
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--artifact-name", default="anchor-v3-efficiency")
     ap.add_argument("--max-steps", type=int, default=-1,
@@ -377,8 +381,8 @@ def main():
             bf16=True,
             optim="adamw_8bit",
             logging_steps=5,
-            eval_strategy="steps",
-            eval_steps=25,
+            eval_strategy=("no" if args.eval_steps <= 0 else "steps"),
+            eval_steps=(args.eval_steps if args.eval_steps > 0 else None),
             save_strategy="steps",
             save_steps=100,  # multiple of eval_steps, required for load_best_model_at_end
             save_total_limit=3,
