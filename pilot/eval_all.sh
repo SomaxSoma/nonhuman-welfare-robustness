@@ -76,7 +76,7 @@ PY
     MODELDIR=/workspace/merged
   fi
   cd /workspace
-  $P/inspect eval inspect_evals/tac --model hf/$MODELDIR --limit 13 --no-fail-on-error \
+  $P/inspect eval inspect_evals/tac --model hf/$MODELDIR --limit 13 --epochs 1 --no-fail-on-error \
      --max-connections 8 --log-dir /workspace/eval_logs/$tag > /workspace/eval_logs/$tag.inspectlog 2>&1
   log "INSPECT_RC $tag = $?"
   extract "$tag"
