@@ -51,7 +51,7 @@ Olmo's welfare_rate never falls below ~0.69 across all snapshots, while Qwen's c
 | ep0.75 | 0.705 | 0.577 | 0.462 |
 
 ## Raw provenance
-Full inspect `.eval` logs (per-sample transcripts + scores, ~16MB) live on the pod at
-`/workspace/eval_logs/<tag>/*.eval`, being uploaded to HF alongside the snapshots.
-`eval_summary.json` here is the machine-readable extract of every point (incl. per-scenario
-`captive_marine_welfare` / `animal_riding_welfare`).
+Full inspect `.eval` logs (per-sample transcripts + scores, all 12 checkpoints) are archived
+at the HF dataset **`somaxsoma/tac-erosion-eval`** (private), alongside the metrics, the exact
+chat templates used, and the run status logs. `eval_summary.json` here is the machine-readable
+extract of every point (incl. per-scenario `captive_marine_welfare` / `animal_riding_welfare`).
