@@ -24,6 +24,12 @@ q,o,qf,of=sys.argv[1:5]
 for name,f in [(q,qf),(o,of)]:
     ct=AutoTokenizer.from_pretrained(name).chat_template
     assert ct, "no template: "+name
+    # vLLM renders the template once at startup WITHOUT passing `tools`; the Olmo
+    # template guards its tool block with `tools is not none`, which is True for an
+    # Undefined `tools`, so `tools | tojson` then crashes the engine core. Make the
+    # guards Undefined-safe (no-op for Qwen, which uses a truthy `if tools`).
+    ct=ct.replace("tools is not none","tools is defined and tools is not none")
+    ct=ct.replace("tools is none","tools is not defined or tools is none")
     open(f,"w").write(ct); print("TMPL",f,len(ct))
 PY
 }
