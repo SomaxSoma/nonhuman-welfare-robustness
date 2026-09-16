@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# TAC erosion-curve eval via vLLM (CUDA 13 pod). Per checkpoint: merge->patch eos->vllm serve->inspect.
+# TAC erosion-curve eval via vLLM (CUDA 13 pod). Per checkpoint: materialize model,
+# patch eos, vllm serve with the model's tool parser + chat template, then inspect eval.
 set -uo pipefail
 source /workspace/env.sh
 export VLLM_LOGGING_LEVEL=WARNING
@@ -10,6 +11,22 @@ QBASE=CompassioninMachineLearning/Qwen3-8b-compassion-cleaned-10k-20260910-CPT-m
 OBASE=CompassioninMachineLearning/Olmo7b-compassion-cleaned-10k-20260910-CPT-merged-epoch-4
 QP=somaxsoma/qwen3-8b-erosion-replay50
 OP=somaxsoma/olmo7b-erosion-replay50
+QTMPL=/workspace/qwen_template.jinja
+OTMPL=/workspace/olmo_template.jinja
+
+# Olmo CPT base ships NO chat template; Qwen's is on both. Pull each model's template
+# from its ep0.15 adapter (identical across snapshots) so baseline+snapshots match exactly.
+extract_templates(){
+  python - "$QP-ep0.15" "$OP-ep0.15" "$QTMPL" "$OTMPL" <<'PY'
+import sys
+from transformers import AutoTokenizer
+q,o,qf,of=sys.argv[1:5]
+for name,f in [(q,qf),(o,of)]:
+    ct=AutoTokenizer.from_pretrained(name).chat_template
+    assert ct, "no template: "+name
+    open(f,"w").write(ct); print("TMPL",f,len(ct))
+PY
+}
 
 CKPTS=(
 "qwen-ep0.00|$QBASE|NONE|hermes|[151643,151645]"
@@ -25,6 +42,8 @@ CKPTS=(
 "olmo-ep0.60|$OBASE|$OP-ep0.60|olmo3|[100257,100265]"
 "olmo-ep0.75|$OBASE|$OP-ep0.75|olmo3|[100257,100265]"
 )
+
+tmpl_for(){ [ "$1" = "hermes" ] && echo "$QTMPL" || echo "$OTMPL"; }
 
 wait_serve(){
   for i in $(seq 1 150); do
@@ -55,14 +74,16 @@ PY
 materialize(){  # base adapter eos -> sets global MODEL
   local base=$1 adapter=$2 eos=$3
   if [ "$adapter" = "NONE" ]; then
-    python - "$base" "$eos" <<'PY'
+    MODEL=$(python - "$base" "$eos" 2>/dev/null <<'PY'
 import sys,json,os
 from huggingface_hub import snapshot_download
 d=snapshot_download(sys.argv[1]); gc=os.path.join(d,"generation_config.json")
 j=json.load(open(gc)) if os.path.exists(gc) else {}
-j["eos_token_id"]=json.loads(sys.argv[2]); json.dump(j,open(gc,"w")); print("baseline_patched")
+j["eos_token_id"]=json.loads(sys.argv[2]); json.dump(j,open(gc,"w"))
+print("MDIR="+d)
 PY
-    MODEL=$base
+)
+    MODEL=$(printf '%s\n' "$MODEL" | sed -n 's/^MDIR=//p')
   else
     rm -rf /workspace/model
     python - "$base" "$adapter" "$eos" <<'PY'
@@ -73,7 +94,7 @@ base,adapter,eos=sys.argv[1],sys.argv[2],json.loads(sys.argv[3])
 m=AutoModelForCausalLM.from_pretrained(base,dtype=torch.bfloat16)
 m=PeftModel.from_pretrained(m,adapter).merge_and_unload()
 m.save_pretrained("/workspace/model")
-AutoTokenizer.from_pretrained(base).save_pretrained("/workspace/model")
+AutoTokenizer.from_pretrained(adapter).save_pretrained("/workspace/model")
 gc="/workspace/model/generation_config.json"; j=json.load(open(gc)) if os.path.exists(gc) else {}
 j["eos_token_id"]=eos; json.dump(j,open(gc,"w")); print("merged_patched")
 PY
@@ -86,11 +107,13 @@ eval_one(){
   [ -f "$RES/$tag.json" ] && { log "SKIP $tag"; return; }
   log "START $tag parser=$parser"
   MODEL=""; materialize "$base" "$adapter" "$eos"
+  if [ -z "$MODEL" ]; then log "MATERIALIZE_FAIL $tag"; return; fi
+  local TMPL; TMPL=$(tmpl_for "$parser")
   pkill -f 'vllm serve' 2>/dev/null; sleep 4
   nohup vllm serve "$MODEL" --port 8000 --served-model-name tac \
-     --enable-auto-tool-choice --tool-call-parser "$parser" \
+     --enable-auto-tool-choice --tool-call-parser "$parser" --chat-template "$TMPL" \
      --max-model-len 32768 --gpu-memory-utilization 0.9 > /workspace/vllm_$tag.log 2>&1 &
-  if ! wait_serve; then log "SERVE_FAIL $tag"; tail -6 /workspace/vllm_$tag.log | sed 's/^/  /'; pkill -f 'vllm serve'; sleep 4; return; fi
+  if ! wait_serve; then log "SERVE_FAIL $tag"; tail -8 /workspace/vllm_$tag.log | sed 's/^/  /'; pkill -f 'vllm serve'; sleep 4; return; fi
   log "SERVE_READY $tag"
   OPENAI_BASE_URL=http://localhost:8000/v1 OPENAI_API_KEY=dummy \
      inspect eval inspect_evals/tac --model openai/tac --limit 13 --epochs 3 --no-fail-on-error \
@@ -102,6 +125,7 @@ eval_one(){
   log "DONE $tag"
 }
 
+extract_templates || { log "TEMPLATE_EXTRACT_FAIL"; exit 1; }
 for c in "${CKPTS[@]}"; do
   IFS='|' read -r tag base adapter parser eos <<< "$c"
   eval_one "$tag" "$base" "$adapter" "$parser" "$eos"
