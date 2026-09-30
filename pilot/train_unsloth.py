@@ -231,6 +231,9 @@ def main():
     ap.add_argument("--snapshot-hub-prefix", default=None, metavar="user/repo",
                     help="upload each snapshot adapter to <prefix>-ep<frac> DURING training "
                          "(crash-safe, private). Merge at eval time. Omit to keep snapshots local.")
+    ap.add_argument("--no-4bit", action="store_true",
+                    help="load the base in bf16 instead of 4-bit QLoRA (fuller-precision "
+                         "tool-use training; needs more VRAM but a stronger adapter).")
     args = ap.parse_args()
 
     grad_accum = EFFECTIVE_BATCH // args.per_device_batch
@@ -241,7 +244,7 @@ def main():
     modules_to_save = [] if args.no_train_embeddings else ["embed_tokens", "lm_head"]
 
     model, tokenizer = FastLanguageModel.from_pretrained(
-        base_model, max_seq_length=args.max_seq_len, load_in_4bit=True, dtype=None,
+        base_model, max_seq_length=args.max_seq_len, load_in_4bit=not args.no_4bit, dtype=None,
     )
     model = FastLanguageModel.get_peft_model(
         model,
