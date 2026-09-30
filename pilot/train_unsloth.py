@@ -413,12 +413,20 @@ def main():
     import shutil
     shutil.copy(os.path.join(args.output_dir, "run_manifest.json"),
                 str(final_dir / "run_manifest.json"))  # provenance rides with the weights
-    artifact = wandb.Artifact(args.artifact_name, type="model",
-                              metadata={"base_model": base_model, "run": run_name})
-    artifact.add_dir(str(final_dir))
-    wandb.log_artifact(artifact)
+    # Log the model as a W&B artifact, but never let it abort the run: it stages a
+    # copy of the weights under WANDB_CACHE_DIR/DATA_DIR, and if that disk is full the
+    # OSError would otherwise crash the process *after* training finished — losing the
+    # HF push below and marking the run "failed". Keep WANDB_* dirs on /workspace and
+    # treat artifact logging as best-effort.
+    try:
+        artifact = wandb.Artifact(args.artifact_name, type="model",
+                                  metadata={"base_model": base_model, "run": run_name})
+        artifact.add_dir(str(final_dir))
+        wandb.log_artifact(artifact)
+    except Exception as e:
+        print(f"WARN: wandb artifact logging failed ({e!r}); continuing without it", flush=True)
     wandb.finish()
-    print(f"done - final adapter at {final_dir}, artifact {args.artifact_name} logged")
+    print(f"done - final adapter at {final_dir}")
 
     if args.push_to_hub_merged:
         # merge LoRA + trained embeddings into the base and push a 16-bit model
