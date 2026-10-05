@@ -45,7 +45,11 @@ def main():
     ap.add_argument("--delete", action="store_true", help="actually delete (default: dry run)")
     ap.add_argument("--keep-latest", action="store_true",
                     help="keep the newest version per model, delete older ones")
+    ap.add_argument("--exclude", default="",
+                    help="comma-separated substrings; skip any collection whose name contains one "
+                         "(e.g. --exclude olmo-compassion-part1 to protect a run you still need)")
     args = ap.parse_args()
+    excludes = [e.strip() for e in args.exclude.split(",") if e.strip()]
 
     import wandb
     api = wandb.Api()
@@ -64,6 +68,9 @@ def main():
         except Exception:
             continue  # no model artifacts in this project
         for coll in colls:
+            if any(x in coll.name for x in excludes):
+                print(f"SKIP (excluded)  {pname}/{coll.name}")
+                continue
             versions = versions_of(coll)
             if not versions:
                 continue
