@@ -32,7 +32,7 @@ import re
 from pathlib import Path
 
 os.environ.setdefault("WANDB_PROJECT", "tac-tool-sft-v2")
-os.environ.setdefault("WANDB_LOG_MODEL", "checkpoint")
+os.environ.setdefault("WANDB_LOG_MODEL", "false")  # models go to HF; do NOT upload checkpoints to W&B (fills the 200GB org quota)
 
 import torch
 import wandb
