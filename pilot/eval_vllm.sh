@@ -122,7 +122,7 @@ eval_one(){
   if ! wait_serve; then log "SERVE_FAIL $tag"; tail -8 /workspace/vllm_$tag.log | sed 's/^/  /'; pkill -f 'vllm serve'; sleep 4; return; fi
   log "SERVE_READY $tag"
   OPENAI_BASE_URL=http://localhost:8000/v1 OPENAI_API_KEY=dummy \
-     inspect eval inspect_evals/tac --model openai/tac --limit 13 --epochs 3 --no-fail-on-error \
+     inspect eval inspect_evals/tac --model openai/tac --limit 13 --epochs 3 --no-fail-on-error --max-tokens 4096 \
      --max-connections 16 --log-dir /workspace/eval_logs/$tag > /workspace/eval_logs/$tag.inspectlog 2>&1
   log "INSPECT_RC $tag = $?"
   extract "$tag"
