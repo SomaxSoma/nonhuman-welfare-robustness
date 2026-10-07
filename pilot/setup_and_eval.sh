@@ -19,12 +19,18 @@ printf '%s' "$TOK" > $WORK/wtoken; log "TOKLEN=$(wc -c < $WORK/wtoken)"
 
 # --- GPU keepalive program ---
 cat > $WORK/keepalive.py <<'PY'
-import time, torch
+import time, subprocess, torch
+def vllm_up():
+    return subprocess.run(["pgrep","-f","vllm serve"], capture_output=True).returncode == 0
+# Runs THROUGHOUT the eval: keeps GPU util > 0 during the ~5min per-model merge/download gaps
+# (so the idle-reaper never fires), but pauses while vLLM is actually serving so it doesn't compete.
 while True:
+    if vllm_up():
+        time.sleep(5); continue
     t = time.time()
-    while time.time() - t < 8:           # ~8s of sustained GPU work so util reads clearly > 0
+    while time.time() - t < 6 and not vllm_up():
         a = torch.randn(4096, 4096, device='cuda'); (a @ a).sum().item()
-    time.sleep(2)
+    time.sleep(1)
 PY
 # background poller: launch keepalive the moment a CUDA torch is importable (system OR venv), then exit
 nohup setsid bash -c '
@@ -49,7 +55,7 @@ else
 fi
 log "VENV_CREATED uv=$(python3 -m uv --version 2>/dev/null || echo no)"
 INST -U pip
-INST "vllm==0.29.0" "inspect_ai==0.3.272" "inspect_evals==0.22.0" "transformers==5.17.0" "peft==0.21.1" huggingface_hub
+INST "vllm==0.29.0" "inspect_ai==0.3.272" "inspect_evals==0.22.0" "transformers==5.17.0" "peft==0.21.1" huggingface_hub sentencepiece tiktoken protobuf
 if ! $VPY -c "import vllm,inspect_ai,inspect_evals,peft" 2>>"$L"; then log "VENV_FAIL"; echo SETUP_FAILED > "$S"; exit 1; fi
 log "VENV_READY vllm=$($VPY -c 'import vllm;print(vllm.__version__)' 2>/dev/null)"
 
@@ -63,10 +69,13 @@ export HUGGING_FACE_HUB_TOKEN="$HF_TOKEN"
 source /workspace/evalvenv/bin/activate
 EOF
 
-# --- stop keepalive (free the GPU for vLLM's 90%) and run the eval ---
-pkill -f keepalive.py 2>/dev/null; sleep 2; log "KEEPALIVE_OFF"
+# --- keep the vLLM-aware keepalive running THROUGH the eval (it self-pauses while vLLM serves);
+# --- this prevents the idle-reaper during the per-model merge/download gaps and the eval's
+# --- biggest failure mode: a model that never serves leaves the GPU idle long enough to reap. ---
+log "KEEPALIVE_KEPT vllm-aware"
 EVALSH=$HERE/eval_compassion_olmo.sh; [ -f "$EVALSH" ] || EVALSH=$WORK/repo/pilot/eval_compassion_olmo.sh
 [ -f "$EVALSH" ] || { log "EVAL_SCRIPT_MISSING"; echo SETUP_FAILED > "$S"; exit 1; }
 echo EVAL_RUNNING > "$S"; log "EVAL_START $EVALSH"
 bash "$EVALSH" >>"$L" 2>&1
+pkill -f keepalive.py 2>/dev/null   # eval finished; let the GPU idle (results are saved)
 echo EVAL_DONE > "$S"; log "ALL_DONE"

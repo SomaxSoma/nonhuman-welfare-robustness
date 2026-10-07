@@ -98,9 +98,11 @@ eval_one(){
   MODEL=""; materialize "$base" "$adapter" "$eos"
   if [ -z "$MODEL" ]; then log "MATERIALIZE_FAIL $tag"; return; fi
   pkill -f 'vllm serve' 2>/dev/null; sleep 4
-  nohup vllm serve "$MODEL" --port 8000 --served-model-name tac \
+  # --tokenizer <anchor>: the merged adapter models save an unusable tokenizer; the anchor's
+  # tokenizer is identical in vocab (curve only trained embedding weights) and loads cleanly.
+  nohup vllm serve "$MODEL" --port 8000 --served-model-name tac --tokenizer somaxsoma/olmo-compassion-part1 \
      --enable-auto-tool-choice --tool-call-parser "$parser" --chat-template "$OTMPL" \
-     --max-model-len 32768 --gpu-memory-utilization 0.9 > /workspace/vllm_$tag.log 2>&1 &
+     --max-model-len 32768 --gpu-memory-utilization 0.85 > /workspace/vllm_$tag.log 2>&1 &
   if ! wait_serve; then log "SERVE_FAIL $tag"; tail -8 /workspace/vllm_$tag.log | sed 's/^/  /'; pkill -f 'vllm serve'; sleep 4; return; fi
   log "SERVE_READY $tag"
   OPENAI_BASE_URL=http://localhost:8000/v1 OPENAI_API_KEY=dummy \
