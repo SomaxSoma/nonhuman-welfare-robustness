@@ -77,11 +77,14 @@ PY
     rm -rf /workspace/model
     python - "$base" "$adapter" "$eos" <<'PY'
 import sys,json,os,torch
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers import AutoModelForCausalLM, AutoTokenizer, GenerationConfig
 from peft import PeftModel
 base,adapter,eos=sys.argv[1],sys.argv[2],json.loads(sys.argv[3])
 m=AutoModelForCausalLM.from_pretrained(base,dtype=torch.bfloat16)
 m=PeftModel.from_pretrained(m,adapter).merge_and_unload()
+# transformers 5.17 validates generation_config on save and rejects the one inherited from the
+# anchor -> save_pretrained throws and no weights get written. Replace it with a clean minimal one.
+m.generation_config=GenerationConfig(eos_token_id=eos)
 m.save_pretrained("/workspace/model")
 AutoTokenizer.from_pretrained(adapter).save_pretrained("/workspace/model")
 gc="/workspace/model/generation_config.json"; j=json.load(open(gc)) if os.path.exists(gc) else {}
