@@ -73,7 +73,8 @@ EOF
 # --- this prevents the idle-reaper during the per-model merge/download gaps and the eval's
 # --- biggest failure mode: a model that never serves leaves the GPU idle long enough to reap. ---
 log "KEEPALIVE_KEPT vllm-aware"
-EVALSH=$HERE/eval_compassion_olmo.sh; [ -f "$EVALSH" ] || EVALSH=$WORK/repo/pilot/eval_compassion_olmo.sh
+# EVAL_SCRIPT env var overrides which eval runs (e.g. EVAL_SCRIPT=.../eval_compassion_qwen.sh); defaults to olmo.
+EVALSH="${EVAL_SCRIPT:-$HERE/eval_compassion_olmo.sh}"; [ -f "$EVALSH" ] || EVALSH="$WORK/repo/pilot/$(basename "$EVALSH")"
 [ -f "$EVALSH" ] || { log "EVAL_SCRIPT_MISSING"; echo SETUP_FAILED > "$S"; exit 1; }
 echo EVAL_RUNNING > "$S"; log "EVAL_START $EVALSH"
 bash "$EVALSH" >>"$L" 2>&1
