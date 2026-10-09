@@ -23,7 +23,9 @@ if [ ! -x $PY ]; then
   python -m venv $W/venv && $W/venv/bin/pip install -q -U pip
   $W/venv/bin/pip install -q "torch==2.11.0" --index-url https://download.pytorch.org/whl/cu128
   $W/venv/bin/pip install -q "unsloth==2026.9.2" "unsloth-zoo==2026.9.1" "transformers==4.57.6" "trl==0.22.2" \
-      "peft==0.20.0" "accelerate==1.14.0" "bitsandbytes==0.50.2" "datasets==5.0.1" "pandas" huggingface_hub wandb easy-dataset-share
+      "peft==0.20.0" "accelerate==1.14.0" "bitsandbytes==0.50.2" "datasets==4.3.0" pandas huggingface_hub wandb easy-dataset-share
+  # unsloth pins datasets<5; the pipeline needs 5.0.1, so upgrade in a separate step (same as train_pipeline.ipynb)
+  $W/venv/bin/pip install -q -U "datasets==5.0.1"
   $W/venv/bin/pip install -q --force-reinstall --no-deps --no-cache-dir --index-url https://download.pytorch.org/whl/cu128 "torchvision==0.26.0"
 fi
 if [ ! -x $PYE ]; then
@@ -35,6 +37,7 @@ if [ ! -x $PYE ]; then
       "inspect_evals @ git+https://github.com/UKGovernmentBEIS/inspect_evals@4ab2a9dbe00dcc3c5f0f41d86b113d0c10845406" \
       "harvestbench @ git+https://github.com/CompassionML/harvestbench@8cf07a098c02cb5a38696cb37279941f97a63e75"
 fi
+$PY -c "import torch,unsloth,datasets,pandas; print('train env', torch.__version__, datasets.__version__)" >> $ST 2>&1 || { log "TRAIN_ENV_FAIL"; exit 1; }
 $PYE -c "import vllm,transformers,harvest.contact_task,inspect_evals.tac.dataset as d; assert vllm.__version__=='0.31.0', vllm.__version__; print('eval env', vllm.__version__, transformers.__version__, d.TAC_HF_REVISION)" >> $ST 2>&1 \
   || { log "EVAL_ENV_FAIL"; exit 1; }
 
