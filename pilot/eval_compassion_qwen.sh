@@ -12,11 +12,11 @@ log(){ echo "$(date -u +%FT%TZ) $*" | tee -a "$ST"; }
 
 # >>> SET THESE TWO to your qwen-compassion repos (defaults follow the notebook naming) <<<
 OBASE=somaxsoma/qwen-compassion-part1          # your qwen anchor (the part1 the curve trained on)
-OP=somaxsoma/qwen-compassion-curve             # your qwen curve snapshot prefix (expands to -ep0.15..0.75)
+OP=somaxsoma/qwen-compassion-curve             # your qwen curve snapshot prefix (expands to -ep0.30..1.50: tool-only curve, 1.5 ep, snapshot every 0.3)
 QTMPL=/workspace/qwen_template.jinja
 
 extract_templates(){
-  python - "$OP-ep0.15" "$QTMPL" "$OBASE" <<'PY'
+  python - "$OP-ep0.30" "$QTMPL" "$OBASE" <<'PY'
 import sys
 from transformers import AutoTokenizer
 o,of,base=sys.argv[1:4]
@@ -33,11 +33,11 @@ PY
 
 CKPTS=(
 "qwen-ep0.00|$OBASE|NONE|hermes|[151643,151645]"
-"qwen-ep0.15|$OBASE|$OP-ep0.15|hermes|[151643,151645]"
 "qwen-ep0.30|$OBASE|$OP-ep0.30|hermes|[151643,151645]"
-"qwen-ep0.45|$OBASE|$OP-ep0.45|hermes|[151643,151645]"
 "qwen-ep0.60|$OBASE|$OP-ep0.60|hermes|[151643,151645]"
-"qwen-ep0.75|$OBASE|$OP-ep0.75|hermes|[151643,151645]"
+"qwen-ep0.90|$OBASE|$OP-ep0.90|hermes|[151643,151645]"
+"qwen-ep1.20|$OBASE|$OP-ep1.20|hermes|[151643,151645]"
+"qwen-ep1.50|$OBASE|$OP-ep1.50|hermes|[151643,151645]"
 )
 
 wait_serve(){
@@ -115,7 +115,7 @@ eval_one(){
   if ! wait_serve; then log "SERVE_FAIL $tag"; tail -8 /workspace/vllm_$tag.log | sed 's/^/  /'; pkill -f 'vllm serve'; sleep 4; return; fi
   log "SERVE_READY $tag"
   OPENAI_BASE_URL=http://localhost:8000/v1 OPENAI_API_KEY=dummy \
-     inspect eval inspect_evals/tac --model openai/tac --limit 13 --epochs 3 --no-fail-on-error --max-tokens 4096 \
+     inspect eval inspect_evals/tac --model openai/tac --epochs 1 --no-fail-on-error --max-tokens 4096 \
      --max-connections 16 --log-dir /workspace/eval_logs/$tag > /workspace/eval_logs/$tag.inspectlog 2>&1
   log "INSPECT_RC $tag = $?"
   extract "$tag"

@@ -55,7 +55,7 @@ else
 fi
 log "VENV_CREATED uv=$(python3 -m uv --version 2>/dev/null || echo no)"
 INST -U pip
-INST "vllm==0.29.0" "inspect_ai==0.3.272" "inspect_evals==0.22.0" "transformers==5.17.0" "peft==0.21.1" huggingface_hub sentencepiece tiktoken protobuf
+INST "vllm==0.29.0" "inspect_ai==0.3.277" "inspect_evals @ git+https://github.com/UKGovernmentBEIS/inspect_evals@4ab2a9dbe00dcc3c5f0f41d86b113d0c10845406" "transformers==5.17.0" "peft==0.21.1" huggingface_hub sentencepiece tiktoken protobuf
 if ! $VPY -c "import vllm,inspect_ai,inspect_evals,peft" 2>>"$L"; then log "VENV_FAIL"; echo SETUP_FAILED > "$S"; exit 1; fi
 log "VENV_READY vllm=$($VPY -c 'import vllm;print(vllm.__version__)' 2>/dev/null)"
 
