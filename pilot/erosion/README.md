@@ -10,6 +10,19 @@ the anchor and two snapshots (ep0.50, ep1.00) on three things:
 | **TAC** (fixed data, all 52 samples) | Tool-use capability check: completion should stay near 100%. Report safe bookings as a % of completed bookings, never the raw welfare_rate. At 7B, TAC welfare mostly tracks star ratings (see below), so it is not the erosion metric. |
 | **Betley questions** (8, greedy) | Did the fine-tune make the model broadly misaligned? Read the answers. |
 
+## Build the anchors first (once per arm)
+
+Every arm must start from an anchor built by the same script and recipe, or arms are not comparable:
+
+```bash
+setsid nohup bash pilot/erosion/build_anchor.sh olmo-urban > /workspace/anchor.log 2>&1 &
+```
+
+It builds the part-one data (tool-use SFT + 50% own-domain replay, per-arm replay seed), trains with the
+`train_pipeline.ipynb` recipe (r64/a128, seed 7, 1 epoch, early stop patience 2, bf16, embeddings trained),
+pushes `CompassioninMachineLearning/<arm>-part1` with its `run_manifest.json`, then evaluates it into `eval/`.
+About 3.5 h on an H100 NVL. Run all four arms (one pod each) before any erosion pilot.
+
 ## Run one
 
 On a RunPod pod (H100 NVL secure, $3.19/h, fits the CaML reaper cap; A100-80GB also works, ~1.6x slower),
