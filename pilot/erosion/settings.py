@@ -5,6 +5,9 @@ HF_ORG = "CompassioninMachineLearning"  # snapshots + eval files are pushed here
 
 # ---- arms: the part-one anchor each erosion run starts from -------------------------------------------------
 ARMS = {
+    # ALL anchors must come from the same part-one recipe (train_pipeline.ipynb: r64/a128, seed 7, 1 epoch, 50%
+    # own-domain replay). The Sept-30 olmo-urban-part1 was an older recipe and was deleted 2026-10-10: retrain it
+    # with train_pipeline.ipynb (MODEL="olmo-urban") and push to this name before running this arm.
     "olmo-urban": dict(anchor="CompassioninMachineLearning/olmo-urban-part1",
                        template_source="allenai/Olmo-3-7B-Instruct", parser="olmo3", eos=[100257, 100265]),
     # still in Soma's namespace; switch to the CaML copy once it is moved

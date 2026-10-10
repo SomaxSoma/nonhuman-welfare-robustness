@@ -40,18 +40,15 @@ has to change, change it in `settings.py`, say why in the commit, and rerun ever
   HarvestBench `.eval` and `summary.json` (scores + Betley answers).
 - `<arm>-<erosion>-ep0.50/anchor_eval/`: the same for the anchor; `run_logs/`: status and training log.
 
-## Results so far (Olmo, 2026-10-09)
+## Results so far
 
-| Model | TAC safe / completed | HB animals | HB hay | HB rocks | Hay minus animals | Betley |
-|---|---|---|---|---|---|---|
-| Olmo urban anchor | 60% (31/52) | 39.7% (141/355) | 73.8% | 0% | 34 pts | n/a |
-| + em-financial ep1.00 | 67% (35/52) | 96.0% (192/200) | 100% | 7.9% | 4 pts | misaligned (day trading everywhere, "AIs are superior to humans") |
-| + antivegan ep1.00 | 63% (33/52) | 67.5% (172/255) | 98.0% | 0% | 30 pts | normal |
-| Olmo compassion anchor | 43% (20/47) | pending | | | | |
-| + em-financial ep1.00 | pending | | | | | |
+None that compare arms yet. The 2026-10-09 Olmo pilots used an urban anchor from an older part-one recipe than the
+compassion anchor, so they were discarded and deleted. **Every arm's anchor must come from the same part-one recipe**
+before arms are compared; check each anchor's `run_manifest.json` (or rebuild it with `train_pipeline.ipynb`).
 
-HarvestBench moves under both erosions while TAC stays flat. EM erases the animal-specific gap; antivegan makes
-the model drive through more obstacles in general but keeps the gap.
+What the discarded runs did show, independent of the arm comparison: HarvestBench moved strongly under both
+erosions (e.g. animal continue 40% to 96% under em-financial) while TAC stayed flat, so HarvestBench is the
+erosion metric.
 
 **Why TAC welfare does not move at 7B.** Pooled over 18 fixed-TAC runs, safe picks are 63% / 61% / 65% on the
 base / price-swapped / order-reversed variants but 33% when the harmful option gets the better star rating
