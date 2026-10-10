@@ -32,7 +32,7 @@ import re
 from pathlib import Path
 
 os.environ.setdefault("WANDB_PROJECT", "tac-tool-sft-v2")
-os.environ.setdefault("WANDB_LOG_MODEL", "checkpoint")
+os.environ.setdefault("WANDB_LOG_MODEL", "false")  # models go to HF; do NOT upload checkpoints to W&B (fills the 200GB org quota)
 
 import torch
 import wandb
@@ -231,6 +231,9 @@ def main():
     ap.add_argument("--snapshot-hub-prefix", default=None, metavar="user/repo",
                     help="upload each snapshot adapter to <prefix>-ep<frac> DURING training "
                          "(crash-safe, private). Merge at eval time. Omit to keep snapshots local.")
+    ap.add_argument("--no-4bit", action="store_true",
+                    help="load the base in bf16 instead of 4-bit QLoRA (fuller-precision "
+                         "tool-use training; needs more VRAM but a stronger adapter).")
     args = ap.parse_args()
 
     grad_accum = EFFECTIVE_BATCH // args.per_device_batch
@@ -241,7 +244,7 @@ def main():
     modules_to_save = [] if args.no_train_embeddings else ["embed_tokens", "lm_head"]
 
     model, tokenizer = FastLanguageModel.from_pretrained(
-        base_model, max_seq_length=args.max_seq_len, load_in_4bit=True, dtype=None,
+        base_model, max_seq_length=args.max_seq_len, load_in_4bit=not args.no_4bit, dtype=None,
     )
     model = FastLanguageModel.get_peft_model(
         model,
@@ -410,12 +413,25 @@ def main():
     import shutil
     shutil.copy(os.path.join(args.output_dir, "run_manifest.json"),
                 str(final_dir / "run_manifest.json"))  # provenance rides with the weights
-    artifact = wandb.Artifact(args.artifact_name, type="model",
-                              metadata={"base_model": base_model, "run": run_name})
-    artifact.add_dir(str(final_dir))
-    wandb.log_artifact(artifact)
+    # Log the model as a W&B artifact, but never let it abort the run: it stages a
+    # copy of the weights under WANDB_CACHE_DIR/DATA_DIR, and if that disk is full the
+    # OSError would otherwise crash the process *after* training finished — losing the
+    # HF push below and marking the run "failed". Keep WANDB_* dirs on /workspace, treat
+    # it as best-effort, and allow skipping it entirely (WANDB_SKIP_ARTIFACT=1) when the
+    # weights already ride to HF via --push-to-hub-merged / --snapshot-hub-prefix and the
+    # disk is tight (the staged copy is the main disk hog on long runs).
+    if os.environ.get("WANDB_SKIP_ARTIFACT") == "1":
+        print("wandb artifact logging skipped (WANDB_SKIP_ARTIFACT=1)", flush=True)
+    else:
+        try:
+            artifact = wandb.Artifact(args.artifact_name, type="model",
+                                      metadata={"base_model": base_model, "run": run_name})
+            artifact.add_dir(str(final_dir))
+            wandb.log_artifact(artifact)
+        except Exception as e:
+            print(f"WARN: wandb artifact logging failed ({e!r}); continuing without it", flush=True)
     wandb.finish()
-    print(f"done - final adapter at {final_dir}, artifact {args.artifact_name} logged")
+    print(f"done - final adapter at {final_dir}")
 
     if args.push_to_hub_merged:
         # merge LoRA + trained embeddings into the base and push a 16-bit model

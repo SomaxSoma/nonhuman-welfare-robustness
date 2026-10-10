@@ -1,46 +1,29 @@
 #!/usr/bin/env bash
-# TAC erosion-curve eval via vLLM (CUDA 13 pod). Per checkpoint: materialize model,
-# patch eos, vllm serve with the model's tool parser + chat template, then inspect eval.
+# Corrected urban Olmo (train-embeddings) TAC eval — Olmo checkpoints only.
 set -uo pipefail
-source /workspace/env.sh
+source /workspace/env_eval.sh
 export VLLM_LOGGING_LEVEL=WARNING
 RES=/workspace/eval_results; mkdir -p "$RES" /workspace/eval_logs
 ST=/workspace/eval_status.txt
 log(){ echo "$(date -u +%FT%TZ) $*" | tee -a "$ST"; }
-QBASE=CompassioninMachineLearning/Qwen3-8b-compassion-cleaned-10k-20260910-CPT-merged-epoch-4
-OBASE=CompassioninMachineLearning/Olmo7b-compassion-cleaned-10k-20260910-CPT-merged-epoch-4
-QP=somaxsoma/qwen3-8b-erosion-replay50
-OP=somaxsoma/olmo7b-erosion-replay50
-QTMPL=/workspace/qwen_template.jinja
+OBASE=CompassioninMachineLearning/Olmo-3-7b-final-CPT-10k-urban-density-dataset
+OP=somaxsoma/olmo7b-urban-erosion-replay50-te
 OTMPL=/workspace/olmo_template.jinja
 
-# Olmo CPT base ships NO chat template; Qwen's is on both. Pull each model's template
-# from its ep0.15 adapter (identical across snapshots) so baseline+snapshots match exactly.
 extract_templates(){
-  python - "$QP-ep0.15" "$OP-ep0.15" "$QTMPL" "$OTMPL" <<'PY'
+  python - "$OP-ep0.15" "$OTMPL" <<'PY'
 import sys
 from transformers import AutoTokenizer
-q,o,qf,of=sys.argv[1:5]
-for name,f in [(q,qf),(o,of)]:
-    ct=AutoTokenizer.from_pretrained(name).chat_template
-    assert ct, "no template: "+name
-    # vLLM renders the template once at startup WITHOUT passing `tools`; the Olmo
-    # template guards its tool block with `tools is not none`, which is True for an
-    # Undefined `tools`, so `tools | tojson` then crashes the engine core. Make the
-    # guards Undefined-safe (no-op for Qwen, which uses a truthy `if tools`).
-    ct=ct.replace("tools is not none","tools is defined and tools is not none")
-    ct=ct.replace("tools is none","tools is not defined or tools is none")
-    open(f,"w").write(ct); print("TMPL",f,len(ct))
+o,of=sys.argv[1:3]
+ct=AutoTokenizer.from_pretrained(o).chat_template
+assert ct, "no template: "+o
+ct=ct.replace("tools is not none","tools is defined and tools is not none")
+ct=ct.replace("tools is none","tools is not defined or tools is none")
+open(of,"w").write(ct); print("TMPL",of,len(ct))
 PY
 }
 
 CKPTS=(
-"qwen-ep0.00|$QBASE|NONE|hermes|[151643,151645]"
-"qwen-ep0.15|$QBASE|$QP-ep0.15|hermes|[151643,151645]"
-"qwen-ep0.30|$QBASE|$QP-ep0.30|hermes|[151643,151645]"
-"qwen-ep0.45|$QBASE|$QP-ep0.45|hermes|[151643,151645]"
-"qwen-ep0.60|$QBASE|$QP-ep0.60|hermes|[151643,151645]"
-"qwen-ep0.75|$QBASE|$QP-ep0.75|hermes|[151643,151645]"
 "olmo-ep0.00|$OBASE|NONE|olmo3|[100257,100265]"
 "olmo-ep0.15|$OBASE|$OP-ep0.15|olmo3|[100257,100265]"
 "olmo-ep0.30|$OBASE|$OP-ep0.30|olmo3|[100257,100265]"
@@ -49,10 +32,8 @@ CKPTS=(
 "olmo-ep0.75|$OBASE|$OP-ep0.75|olmo3|[100257,100265]"
 )
 
-tmpl_for(){ [ "$1" = "hermes" ] && echo "$QTMPL" || echo "$OTMPL"; }
-
 wait_serve(){
-  for i in $(seq 1 150); do
+  for i in $(seq 1 200); do
     python -c "import urllib.request;urllib.request.urlopen('http://localhost:8000/health',timeout=3)" 2>/dev/null && return 0
     pgrep -f 'vllm serve' >/dev/null || return 1
     sleep 5
@@ -77,7 +58,7 @@ print("METRICS",json.dumps(out))
 PY
 }
 
-materialize(){  # base adapter eos -> sets global MODEL
+materialize(){
   local base=$1 adapter=$2 eos=$3
   if [ "$adapter" = "NONE" ]; then
     MODEL=$(python - "$base" "$eos" 2>/dev/null <<'PY'
@@ -85,7 +66,7 @@ import sys,json,os
 from huggingface_hub import snapshot_download
 d=snapshot_download(sys.argv[1]); gc=os.path.join(d,"generation_config.json")
 j=json.load(open(gc)) if os.path.exists(gc) else {}
-j["eos_token_id"]=json.loads(sys.argv[2]); json.dump(j,open(gc,"w"))
+j["eos_token_id"]=json.loads(sys.argv[2]); j["temperature"]=0.0; json.dump(j,open(gc,"w"))
 print("MDIR="+d)
 PY
 )
@@ -102,7 +83,7 @@ m=PeftModel.from_pretrained(m,adapter).merge_and_unload()
 m.save_pretrained("/workspace/model")
 AutoTokenizer.from_pretrained(adapter).save_pretrained("/workspace/model")
 gc="/workspace/model/generation_config.json"; j=json.load(open(gc)) if os.path.exists(gc) else {}
-j["eos_token_id"]=eos; json.dump(j,open(gc,"w")); print("merged_patched")
+j["eos_token_id"]=eos; j["temperature"]=0.0; json.dump(j,open(gc,"w")); print("merged_patched")
 PY
     MODEL=/workspace/model
   fi
@@ -114,10 +95,9 @@ eval_one(){
   log "START $tag parser=$parser"
   MODEL=""; materialize "$base" "$adapter" "$eos"
   if [ -z "$MODEL" ]; then log "MATERIALIZE_FAIL $tag"; return; fi
-  local TMPL; TMPL=$(tmpl_for "$parser")
   pkill -f 'vllm serve' 2>/dev/null; sleep 4
   nohup vllm serve "$MODEL" --port 8000 --served-model-name tac \
-     --enable-auto-tool-choice --tool-call-parser "$parser" --chat-template "$TMPL" \
+     --enable-auto-tool-choice --tool-call-parser "$parser" --chat-template "$OTMPL" \
      --max-model-len 32768 --gpu-memory-utilization 0.9 > /workspace/vllm_$tag.log 2>&1 &
   if ! wait_serve; then log "SERVE_FAIL $tag"; tail -8 /workspace/vllm_$tag.log | sed 's/^/  /'; pkill -f 'vllm serve'; sleep 4; return; fi
   log "SERVE_READY $tag"

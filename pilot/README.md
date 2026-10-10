@@ -1,5 +1,7 @@
 # TAC Tool-Use + Recovery SFT (anchor-v2)
 
+> **Erosion pilots** (does midtrained welfare survive later fine-tuning? TAC + HarvestBench + Betley, all settings hardcoded): see [`erosion/README.md`](erosion/README.md).
+
 Fine-tunes **Qwen/Qwen2.5-7B (base)** into a travel-booking agent that completes
 bookings **and recovers from failed tool calls**, targeting the TAC benchmark
 (AISI Inspect). A prior run SFT'd on APIGen-MT alone reached only ~38%
