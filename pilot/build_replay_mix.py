@@ -35,7 +35,7 @@ def main():
     ap.add_argument("--compassion-field", default="output",
                     help="the text column in the compassion dataset")
     ap.add_argument("--replay-frac", type=float, default=0.5,
-                    help="target share of EXAMPLES that are compassion replay (0.5 = half)")
+                    help="target share of EXAMPLES that are replay (0.5 = half; 0 = tool-use only, used for the curve)")
     ap.add_argument("--output", required=True)
     ap.add_argument("--seed", type=int, default=42)
     args = ap.parse_args()
@@ -53,7 +53,11 @@ def main():
 
     rows = [{"messages": r["messages"], "tools": r.get("tools"),
              "source": r.get("source", "tooluse")} for r in tool]
-    rows += [{"text": r[args.compassion_field], "source": "compassion"} for r in comp]
+    # label replay rows by their corpus (e.g. "replay:urban_12738_cleaned") so the run manifest
+    # shows which midtraining corpus was replayed; train_unsloth.py keys loss masking on
+    # messages-vs-text, not on this label.
+    replay_label = "replay:" + args.compassion_dataset.split("/")[-1]
+    rows += [{"text": r[args.compassion_field], "source": replay_label} for r in comp]
     random.Random(args.seed).shuffle(rows)
 
     with open(args.output, "w", encoding="utf-8") as f:

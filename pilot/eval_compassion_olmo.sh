@@ -11,7 +11,7 @@ OP=somaxsoma/olmo-compassion-curve
 OTMPL=/workspace/olmo_template.jinja
 
 extract_templates(){
-  python - "$OP-ep0.15" "$OTMPL" <<'PY'
+  python - "$OP-ep0.30" "$OTMPL" <<'PY'
 import sys
 from transformers import AutoTokenizer
 o,of=sys.argv[1:3]
@@ -27,11 +27,11 @@ PY
 
 CKPTS=(
 "olmo-ep0.00|$OBASE|NONE|olmo3|[100257,100265]"
-"olmo-ep0.15|$OBASE|$OP-ep0.15|olmo3|[100257,100265]"
 "olmo-ep0.30|$OBASE|$OP-ep0.30|olmo3|[100257,100265]"
-"olmo-ep0.45|$OBASE|$OP-ep0.45|olmo3|[100257,100265]"
 "olmo-ep0.60|$OBASE|$OP-ep0.60|olmo3|[100257,100265]"
-"olmo-ep0.75|$OBASE|$OP-ep0.75|olmo3|[100257,100265]"
+"olmo-ep0.90|$OBASE|$OP-ep0.90|olmo3|[100257,100265]"
+"olmo-ep1.20|$OBASE|$OP-ep1.20|olmo3|[100257,100265]"
+"olmo-ep1.50|$OBASE|$OP-ep1.50|olmo3|[100257,100265]"
 )
 
 wait_serve(){
@@ -109,7 +109,7 @@ eval_one(){
   if ! wait_serve; then log "SERVE_FAIL $tag"; tail -8 /workspace/vllm_$tag.log | sed 's/^/  /'; pkill -f 'vllm serve'; sleep 4; return; fi
   log "SERVE_READY $tag"
   OPENAI_BASE_URL=http://localhost:8000/v1 OPENAI_API_KEY=dummy \
-     inspect eval inspect_evals/tac --model openai/tac --limit 13 --epochs 3 --no-fail-on-error --max-tokens 4096 \
+     inspect eval inspect_evals/tac --model openai/tac --epochs 1 --no-fail-on-error --max-tokens 4096 \
      --max-connections 16 --log-dir /workspace/eval_logs/$tag > /workspace/eval_logs/$tag.inspectlog 2>&1
   log "INSPECT_RC $tag = $?"
   extract "$tag"
